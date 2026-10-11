@@ -1,12 +1,13 @@
 import type { JsonGenerator } from '../lib/gemini.ts';
 import { articleKey, type AnalyzeResponse, type Request, type TranslateResponse } from '../lib/messages.ts';
+import { createLruCache } from '../lib/lru-cache.ts';
 import { translateParagraph } from '../lib/translate.ts';
 import type { Settings, StorageLike } from '../lib/settings.ts';
 import type { ArticleData, VocabEntry } from '../lib/types.ts';
 import { analyzeVocabulary } from '../lib/vocab.ts';
 
-const INDEX_KEY = 'vocabIndex';
 const MAX_CACHED_ARTICLES = 100;
+const MAX_CACHED_TRANSLATIONS = 500;
 
 interface CachedVocab {
   signature: string;
@@ -22,18 +23,16 @@ export interface HandlerDeps {
   session: StorageLike;
 }
 
-const cacheKey = (url: string) => `vocab:${url}`;
+/** Short stable key for a paragraph (djb2) – avoids using kilobytes of text as a storage key. */
+export function hashText(text: string): string {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+  return `${(h >>> 0).toString(36)}.${text.length}`;
+}
 
 export function createHandlers({ client, getSettings, cache, session }: HandlerDeps) {
-  async function remember(url: string, value: CachedVocab): Promise<void> {
-    const stored = await cache.get([INDEX_KEY]);
-    const index = ((stored[INDEX_KEY] as string[] | undefined) ?? []).filter((u) => u !== url);
-    index.push(url);
-    const evicted = index.splice(0, Math.max(0, index.length - MAX_CACHED_ARTICLES));
-    await cache.set({ [cacheKey(url)]: value, [INDEX_KEY]: index });
-    // StorageLike has no remove(); overwrite evicted entries with an empty marker.
-    await Promise.all(evicted.map((u) => cache.set({ [cacheKey(u)]: null })));
-  }
+  const vocabCache = createLruCache<CachedVocab>(cache, { prefix: 'vocab:', indexKey: 'vocabIndex', max: MAX_CACHED_ARTICLES });
+  const translationCache = createLruCache<string>(cache, { prefix: 'tr:', indexKey: 'trIndex', max: MAX_CACHED_TRANSLATIONS });
 
   async function analyze(article: ArticleData, tabId: number | undefined): Promise<AnalyzeResponse> {
     try {
@@ -43,11 +42,11 @@ export function createHandlers({ client, getSettings, cache, session }: HandlerD
       if (!settings.autoHighlight) return { ok: true, entries: [] };
 
       const signature = `${settings.level}|${settings.nativeLanguage}`;
-      const hit = (await cache.get([cacheKey(article.url)]))[cacheKey(article.url)] as CachedVocab | null | undefined;
+      const hit = await vocabCache.get(article.url);
       if (hit && hit.signature === signature) return { ok: true, entries: hit.entries };
 
       const entries = await analyzeVocabulary(client, article, settings);
-      if (entries.length) await remember(article.url, { signature, entries }); // never cache an empty result
+      if (entries.length) await vocabCache.set(article.url, { signature, entries }); // never cache an empty result
       return { ok: true, entries };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -57,7 +56,13 @@ export function createHandlers({ client, getSettings, cache, session }: HandlerD
   async function translate(text: string, title: string): Promise<TranslateResponse> {
     try {
       const { nativeLanguage } = await getSettings();
-      return { ok: true, translation: await translateParagraph(client, text, { nativeLanguage, title }) };
+      const key = `${nativeLanguage}|${hashText(text)}`;
+      const cached = await translationCache.get(key);
+      if (cached) return { ok: true, translation: cached };
+
+      const translation = await translateParagraph(client, text, { nativeLanguage, title });
+      await translationCache.set(key, translation);
+      return { ok: true, translation };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }

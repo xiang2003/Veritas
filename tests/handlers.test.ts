@@ -86,3 +86,26 @@ test('empty AI results are not cached, so the next visit retries', async () => {
   await s.handlers.handle({ type: 'analyze', article }, 1);
   assert.equal(s.calls(), 2);
 });
+
+test('translations are cached per paragraph and language', async () => {
+  let calls = 0;
+  const s = setup({}, async () => (calls++, { translation: '你好' }));
+  const ask = (text: string) => s.handlers.handle({ type: 'translate', text, title: 'T' });
+  assert.deepEqual(await ask('Hello there'), { ok: true, translation: '你好' });
+  await ask('Hello there');
+  assert.equal(calls, 1);
+  await ask('Another paragraph');
+  assert.equal(calls, 2);
+});
+
+test('failed translations are not cached', async () => {
+  let fail = true;
+  const s = setup({}, async () => {
+    if (fail) throw new Error('quota');
+    return { translation: 'ok' };
+  });
+  const ask = () => s.handlers.handle({ type: 'translate', text: 'Hello there', title: 'T' });
+  assert.deepEqual(await ask(), { ok: false, error: 'quota' });
+  fail = false;
+  assert.deepEqual(await ask(), { ok: true, translation: 'ok' });
+});

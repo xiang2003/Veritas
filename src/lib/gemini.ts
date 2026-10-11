@@ -37,12 +37,30 @@ export interface JsonGenerator {
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 const MAX_ATTEMPTS = 3;
 const BASE_DELAY_MS = 1000;
+/** Longer server-requested waits (e.g. a used-up daily quota) are reported instead of waited out. */
+const MAX_AUTO_WAIT_MS = 15_000;
 
 interface GeminiDeps {
   fetch?: typeof fetch;
   /** Injected so tests do not actually wait. */
   sleep?: (ms: number) => Promise<void>;
   getSettings: () => Promise<{ apiKey: string; model: string }>;
+}
+
+/** Parse Google's "Please retry in 4h14m50.4s" hint from an error message. */
+export function parseRetryDelayMs(message: string): number | undefined {
+  const hint = /retry in ((?:[\d.]+[hms])+)/i.exec(message)?.[1];
+  if (!hint) return undefined;
+  const unit = { h: 3_600_000, m: 60_000, s: 1000 } as const;
+  let ms = 0;
+  for (const [, amount, u] of hint.matchAll(/([\d.]+)([hms])/g)) ms += Number(amount) * unit[u as 'h' | 'm' | 's'];
+  return ms;
+}
+
+export function formatWait(ms: number): string {
+  const minutes = Math.ceil(ms / 60_000);
+  if (ms < 60_000) return `${Math.ceil(ms / 1000)} 秒`;
+  return minutes < 60 ? `${minutes} 分鐘` : `${Math.floor(minutes / 60)} 小時 ${minutes % 60} 分`;
 }
 
 /** Remove ```json fences some models add even in JSON mode. */
@@ -91,18 +109,25 @@ export function createGeminiClient({
         }),
       };
 
-      let response!: Response;
-      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-        response = await fetchImpl(`${ENDPOINT}/${model}:generateContent`, init);
-        if (response.ok || !RETRYABLE.has(response.status) || attempt === MAX_ATTEMPTS) break;
-        await sleep(BASE_DELAY_MS * 2 ** (attempt - 1));
-      }
+      for (let attempt = 1; ; attempt++) {
+        const response = await fetchImpl(`${ENDPOINT}/${model}:generateContent`, init);
+        if (response.ok) return parseJsonLoose(extractText(await response.json()));
 
-      if (!response.ok) {
         const detail = await response.json().then((j: any) => j?.error?.message as string | undefined, () => undefined);
+        const requestedWait = detail ? parseRetryDelayMs(detail) : undefined;
+        const wait = requestedWait ?? BASE_DELAY_MS * 2 ** (attempt - 1);
+        if (RETRYABLE.has(response.status) && attempt < MAX_ATTEMPTS && wait <= MAX_AUTO_WAIT_MS) {
+          await sleep(wait);
+          continue;
+        }
+        if (response.status === 429 && requestedWait !== undefined) {
+          throw new GeminiError(
+            `免費額度已用完（${model}），約 ${formatWait(requestedWait)}後重置。可稍後再試，或到設定頁更換模型。`,
+            429,
+          );
+        }
         throw new GeminiError(detail || `Gemini request failed (${response.status})`, response.status);
       }
-      return parseJsonLoose(extractText(await response.json()));
     },
   };
 }
