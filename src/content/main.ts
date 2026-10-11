@@ -3,7 +3,7 @@ import { createSettings } from '../lib/settings.ts';
 import { createTts } from '../lib/speech.ts';
 import { extractArticle } from './extract.ts';
 import { highlightTerms } from './highlighter.ts';
-import { attachTranslateButtons } from './paragraphs.ts';
+import { createParagraphTools } from './paragraphs.ts';
 import { injectStyles } from './styles.ts';
 import { showToast } from './toast.ts';
 import { createTooltip } from './tooltip.ts';
@@ -28,13 +28,24 @@ async function main(): Promise<void> {
   const { root, ...data } = article;
 
   injectStyles(document);
-  let entries: VocabEntry[] = [];
-  const apply = () => {
-    attachTranslateButtons(root, async (text) => {
+  const { speechRate } = await createSettings(chrome.storage.local).get();
+  const tts = createTts({
+    synth: speechSynthesis,
+    createUtterance: (text) => new SpeechSynthesisUtterance(text),
+  });
+  const paragraphTools = createParagraphTools({
+    translate: async (text) => {
       const res = await send<TranslateResponse>({ type: 'translate', text, title: data.title });
       if (!res.ok) throw new Error(res.error);
       return res.translation;
-    });
+    },
+    speak: (text) => tts.speak(text, speechRate),
+    stop: () => tts.stop(),
+  });
+
+  let entries: VocabEntry[] = [];
+  const apply = () => {
+    paragraphTools.attach(root);
     highlightTerms(root, entries);
   };
   apply();
@@ -50,11 +61,6 @@ async function main(): Promise<void> {
   console.info(`[Veritas] ${entries.length} terms from AI, ${count} highlighted`, entries.map((e) => e.term));
   if (!count) showToast(document, `AI found ${entries.length} terms but none matched the page text.`);
 
-  const { speechRate } = await createSettings(chrome.storage.local).get();
-  const tts = createTts({
-    synth: speechSynthesis,
-    createUtterance: (text) => new SpeechSynthesisUtterance(text),
-  });
   const byTerm = new Map(entries.map((e) => [e.term.toLowerCase(), e]));
   createTooltip(document, {
     lookup: (term) => byTerm.get(term),
