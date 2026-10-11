@@ -9,9 +9,17 @@ export class GeminiError extends Error {
   }
 }
 
+/** Base64-encoded audio recorded from the learner. */
+export interface AudioClip {
+  mimeType: string;
+  data: string;
+}
+
 export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
+  /** Sent before the text in the same turn (e.g. the learner's spoken answer). */
+  audio?: AudioClip;
 }
 
 export interface JsonRequest {
@@ -49,6 +57,13 @@ function extractText(data: any): string {
   return text;
 }
 
+function toContent(m: ChatMessage) {
+  const parts: object[] = [];
+  if (m.audio) parts.push({ inline_data: { mime_type: m.audio.mimeType, data: m.audio.data } });
+  parts.push({ text: m.text });
+  return { role: m.role, parts };
+}
+
 export function createGeminiClient({ fetch: fetchImpl = globalThis.fetch, getSettings }: GeminiDeps): JsonGenerator {
   return {
     async generateJson({ system, messages, temperature = 0.4 }) {
@@ -60,7 +75,7 @@ export function createGeminiClient({ fetch: fetchImpl = globalThis.fetch, getSet
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: system }] },
-          contents: messages.map((m) => ({ role: m.role, parts: [{ text: m.text }] })),
+          contents: messages.map(toContent),
           generationConfig: { responseMimeType: 'application/json', temperature },
         }),
       });

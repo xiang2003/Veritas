@@ -1,7 +1,8 @@
 import { createGeminiClient } from '../lib/gemini.ts';
 import { articleKey } from '../lib/messages.ts';
 import { createSettings, DEFAULT_SETTINGS, type Settings } from '../lib/settings.ts';
-import { createStt, createTts, type RecognitionLike } from '../lib/speech.ts';
+import { createRecorder } from '../lib/recorder.ts';
+import { createTts } from '../lib/speech.ts';
 import { createTutorSession } from '../lib/tutor.ts';
 import type { ArticleData } from '../lib/types.ts';
 import { createController } from './controller.ts';
@@ -11,8 +12,6 @@ const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>
 
 const settings = createSettings(chrome.storage.local);
 const client = createGeminiClient({ getSettings: settings.get });
-const SpeechRecognitionCtor: (new () => RecognitionLike) | undefined =
-  (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
 
 let latestSettings: Settings = DEFAULT_SETTINGS;
 let currentUrl: string | undefined;
@@ -22,7 +21,7 @@ let replay: (text: string) => void = () => {};
 const view = createView(
   document,
   {
-    title: $('#title'), status: $('#status'), log: $('#log'), draft: $('#draft'), error: $('#error'),
+    title: $('#title'), status: $('#status'), log: $('#log'), error: $('#error'),
     startButton: $('#start'), micButton: $('#mic'), sendButton: $('#send'), input: $('#text'),
   },
   (text) => replay(text),
@@ -31,7 +30,7 @@ const view = createView(
 const controller = createController({
   // Level/language are read when a session is created (refresh() loads the latest settings first).
   createSession: (article) => createTutorSession(client, article, latestSettings),
-  stt: createStt(SpeechRecognitionCtor && (() => new SpeechRecognitionCtor())),
+  recorder: createRecorder(),
   tts: createTts({ synth: speechSynthesis, createUtterance: (t) => new SpeechSynthesisUtterance(t) }),
   view,
   getRate: () => rate,

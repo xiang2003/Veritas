@@ -48,3 +48,13 @@ test('parseJsonLoose strips code fences and rejects garbage', () => {
   assert.deepEqual(parseJsonLoose('```json\n{"x":2}\n```'), { x: 2 });
   assert.throws(() => parseJsonLoose('nope'), /invalid JSON/);
 });
+
+test('audio is sent as an inline_data part before the text', async () => {
+  let body: any;
+  const client = createGeminiClient({
+    getSettings: settings,
+    fetch: async (_url, init) => ((body = JSON.parse(init!.body as string)), ok('{}')),
+  });
+  await client.generateJson({ system: 's', messages: [{ role: 'user', text: 'say', audio: { mimeType: 'audio/webm', data: 'AAA' } }] });
+  assert.deepEqual(body.contents[0].parts, [{ inline_data: { mime_type: 'audio/webm', data: 'AAA' } }, { text: 'say' }]);
+});

@@ -55,3 +55,35 @@ test('failed call does not pollute history, so it can be retried', async () => {
   await s.send('hello');
   assert.equal(s.length, 2);
 });
+
+const clip = { mimeType: 'audio/webm', data: 'AAA' };
+
+test('parseTutorTurn reads transcript and pronunciation', () => {
+  const turn = parseTutorTurn({ ...good, transcript: ' i goed ', pronunciation: ' storm ' });
+  assert.equal(turn.transcript, 'i goed');
+  assert.equal(turn.pronunciation, 'storm');
+});
+
+test('sendAudio attaches the clip, then keeps only the transcript in history', async () => {
+  const sent: JsonRequest[] = [];
+  const client: JsonGenerator = {
+    generateJson: async (r) => (sent.push(structuredClone(r)), { ...good, transcript: 'i goed there' }),
+  };
+  const s = createTutorSession(client, article, opts);
+  const turn = await s.sendAudio(clip);
+  assert.equal(turn.transcript, 'i goed there');
+  assert.deepEqual(sent[0]!.messages[0]!.audio, clip);
+  await s.send('next');
+  assert.equal(sent[1]!.messages[0]!.audio, undefined);
+  assert.equal(sent[1]!.messages[0]!.text, 'i goed there');
+});
+
+test('typed answers echo the typed text as transcript', async () => {
+  const client: JsonGenerator = { generateJson: async () => good };
+  const turn = await createTutorSession(client, article, opts).send('hello there');
+  assert.equal(turn.transcript, 'hello there');
+});
+
+test('system prompt demands a verbatim transcript', () => {
+  assert.match(buildTutorSystemPrompt(article, opts), /word for word/);
+});

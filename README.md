@@ -3,7 +3,7 @@
 Chrome extension (Manifest V3, TypeScript) for reading English news and practising speaking.
 
 - **Vocabulary underlining** – on CNN, BBC, NYT, Guardian, Reuters, AP, WaPo, NPR, CNBC and Time, hard words and phrases are underlined. Hover to see IPA, meaning (in your language), English definition, example and usage; click 🔊 to hear it.
-- **Speaking tutor** – click the toolbar icon to open the side panel. Gemini has already read the article; talk about it by voice (speech-to-text) or typing. It answers aloud (text-to-speech), lists your mistakes with explanations, and shows a better way to say what you meant.
+- **Speaking tutor** – click the toolbar icon to open the side panel. Gemini has already read the article; talk about it by voice or typing (your recording is transcribed by Gemini, which also comments on pronunciation). It answers aloud (text-to-speech), lists your mistakes with explanations, and shows a better way to say what you meant.
 
 ## Setup
 
@@ -28,14 +28,14 @@ npm run build          # outputs dist/
 ## Architecture
 
 ```
-src/lib/         pure logic, no chrome.* / DOM globals  (gemini, vocab, tutor, speech, settings)
+src/lib/         pure logic, no chrome.* / DOM globals  (gemini, vocab, tutor, speech, recorder, settings)
 src/content/     page side: extract → highlight → tooltip
 src/background/  service worker: Gemini calls for the content script, per-URL cache
 src/sidepanel/   controller (logic, fully tested) + view (DOM) + main (wiring)
 src/options/     settings form
 ```
 
-Modules talk through small interfaces (`JsonGenerator`, `StorageLike`, `View`, `SttLike`…) and receive their dependencies by injection, so each is tested with fakes and no network or browser.
+Modules talk through small interfaces (`JsonGenerator`, `StorageLike`, `View`, `RecorderLike`…) and receive their dependencies by injection, so each is tested with fakes and no network or browser.
 
 ## Adding a news site
 
@@ -44,5 +44,5 @@ Add its pattern to `content_scripts[0].matches` in `static/manifest.json`. If ar
 ## Notes
 
 - Free-tier Gemini keys are rate-limited; results are cached per URL (100 articles).
-- Speech recognition uses Chrome's Web Speech API, which needs an internet connection.
+- Spoken answers are recorded in the side panel and sent to Gemini as audio (transcription + feedback in one call); text-to-speech uses the browser's built-in voices.
 - Article text is sent to the Gemini API; nothing else leaves the browser. The API key is stored in `chrome.storage.local`.

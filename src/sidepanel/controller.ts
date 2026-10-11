@@ -1,21 +1,14 @@
-import type { ArticleData } from '../lib/types.ts';
+import type { AudioClip } from '../lib/gemini.ts';
+import type { RecorderLike } from '../lib/recorder.ts';
 import type { TutorTurn } from '../lib/tutor.ts';
+import type { ArticleData } from '../lib/types.ts';
 
 export type Phase = 'no-article' | 'ready' | 'listening' | 'thinking' | 'speaking';
 
 export interface TutorSessionLike {
   start(): Promise<TutorTurn>;
   send(text: string): Promise<TutorTurn>;
-}
-
-export interface SttLike {
-  supported: boolean;
-  start(handlers: {
-    onResult: (transcript: string, final: boolean) => void;
-    onError: (message: string) => void;
-    onEnd: () => void;
-  }): void;
-  stop(): void;
+  sendAudio(clip: AudioClip): Promise<TutorTurn>;
 }
 
 export interface TtsLike {
@@ -28,7 +21,6 @@ export interface View {
   setPhase(phase: Phase): void;
   setArticleTitle(title: string): void;
   clearConversation(): void;
-  setDraft(text: string): void;
   addUserMessage(text: string): void;
   addTutorTurn(turn: TutorTurn): void;
   showError(message: string): void;
@@ -36,36 +28,33 @@ export interface View {
 
 export interface ControllerDeps {
   createSession: (article: ArticleData) => TutorSessionLike;
-  stt: SttLike;
+  recorder: RecorderLike;
   tts: TtsLike;
   view: View;
   getRate: () => number;
-  /** Silence after the last word before the answer is submitted automatically. */
-  silenceMs?: number;
 }
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-const DEFAULT_SILENCE_MS = 2500;
-
-export function createController({ createSession, stt, tts, view, getRate, silenceMs = DEFAULT_SILENCE_MS }: ControllerDeps) {
+export function createController({ createSession, recorder, tts, view, getRate }: ControllerDeps) {
   let session: TutorSessionLike | undefined;
   let phase: Phase = 'no-article';
-  let pending = ''; // transcript heard but not yet submitted
-  let silenceTimer: ReturnType<typeof setTimeout> | undefined;
 
   function setPhase(next: Phase) {
     phase = next;
     view.setPhase(next);
   }
 
-  /** Send one learner turn (spoken or typed) and speak the tutor's answer. */
-  async function converse(call: (s: TutorSessionLike) => Promise<TutorTurn>, userText?: string) {
+  /**
+   * Run one tutor turn. The learner's bubble is shown once their words are known:
+   * right away for typed input, after Gemini's transcription for spoken input.
+   */
+  async function converse(call: (s: TutorSessionLike) => Promise<TutorTurn>) {
     if (!session) return;
-    if (userText) view.addUserMessage(userText);
     setPhase('thinking');
     try {
       const turn = await call(session);
+      if (turn.transcript) view.addUserMessage(turn.transcript);
       view.addTutorTurn(turn);
       setPhase('speaking');
       await tts.speak(turn.reply, getRate());
@@ -75,22 +64,12 @@ export function createController({ createSession, stt, tts, view, getRate, silen
     setPhase('ready');
   }
 
-  async function submit(text: string) {
-    const trimmed = text.trim();
-    clearTimeout(silenceTimer);
-    pending = '';
-    view.setDraft('');
-    if (trimmed && phase !== 'thinking') await converse((s) => s.send(trimmed), trimmed);
-  }
-
   return {
     /** Called whenever the active tab's article changes (null = no article on this page). */
     setArticle(article: ArticleData | null) {
-      stt.stop();
+      recorder.stop();
       tts.stop();
       view.clearConversation();
-      clearTimeout(silenceTimer);
-      pending = '';
       if (!article) {
         session = undefined;
         view.setArticleTitle('');
@@ -103,30 +82,25 @@ export function createController({ createSession, stt, tts, view, getRate, silen
 
     start: () => converse((s) => s.start()),
 
-    submitText: submit,
+    async submitText(text: string) {
+      const trimmed = text.trim();
+      if (trimmed && phase !== 'thinking') await converse((s) => s.send(trimmed));
+    },
 
     toggleMic() {
-      if (phase === 'listening') return stt.stop();
+      if (phase === 'listening') return recorder.stop();
       if (phase === 'thinking' || !session) return;
       tts.stop();
       setPhase('listening');
-      stt.start({
-        onResult: (transcript) => {
-          pending = transcript;
-          view.setDraft(transcript);
-          // Submit only after a real pause, not at the first breath.
-          clearTimeout(silenceTimer);
-          silenceTimer = setTimeout(() => stt.stop(), silenceMs);
+      recorder.start({
+        onClip: (clip) => {
+          if (clip) return void converse((s) => s.sendAudio(clip));
+          view.showError('No speech detected. Try again.');
+          setPhase('ready');
         },
         onError: (message) => {
-          clearTimeout(silenceTimer);
-          pending = '';
           view.showError(message);
-        },
-        onEnd: () => {
-          // Recognition ended without a final result: don't lose what was heard.
-          if (pending) void submit(pending);
-          else if (phase === 'listening') setPhase('ready');
+          setPhase('ready');
         },
       });
     },
@@ -134,4 +108,3 @@ export function createController({ createSession, stt, tts, view, getRate, silen
     replay: (text: string) => tts.speak(text, getRate()),
   };
 }
-

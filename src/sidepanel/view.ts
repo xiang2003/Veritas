@@ -4,7 +4,7 @@ import type { Phase, View } from './controller.ts';
 const PHASE_LABEL: Record<Phase, string> = {
   'no-article': 'Open an English news article, then reopen this panel.',
   ready: 'Ready',
-  listening: 'Listening… speak now',
+  listening: 'Recording… speak now (auto-sends after a pause)',
   thinking: 'Thinking…',
   speaking: 'Tutor is speaking…',
 };
@@ -22,7 +22,6 @@ export interface ViewParts {
   title: HTMLElement;
   status: HTMLElement;
   log: HTMLElement;
-  draft: HTMLElement;
   error: HTMLElement;
   startButton: HTMLButtonElement;
   micButton: HTMLButtonElement;
@@ -43,7 +42,7 @@ export function createView(doc: Document, parts: ViewParts, onReplay: (text: str
   const scrollDown = () => (parts.log.scrollTop = parts.log.scrollHeight);
 
   function feedbackCard(turn: TutorTurn): HTMLElement | null {
-    if (!turn.corrections.length && !turn.betterAnswer) return null;
+    if (!turn.corrections.length && !turn.betterAnswer && !turn.pronunciation) return null;
     const card = el(doc, 'section', 'feedback');
     if (turn.praise) card.append(el(doc, 'p', 'praise', turn.praise));
     for (const c of turn.corrections) {
@@ -53,6 +52,7 @@ export function createView(doc: Document, parts: ViewParts, onReplay: (text: str
       item.append(line, el(doc, 'p', 'why', c.explanation));
       card.append(item);
     }
+    if (turn.pronunciation) card.append(el(doc, 'p', 'pron', `🗣 ${turn.pronunciation}`));
     if (turn.betterAnswer) {
       const better = el(doc, 'div', 'better');
       better.append(el(doc, 'strong', '', 'Say it like this'), speakButton(turn.betterAnswer), el(doc, 'p', '', turn.betterAnswer));
@@ -76,9 +76,7 @@ export function createView(doc: Document, parts: ViewParts, onReplay: (text: str
     clearConversation() {
       parts.log.replaceChildren();
       parts.error.textContent = '';
-      parts.draft.textContent = '';
     },
-    setDraft: (text) => (parts.draft.textContent = text),
     addUserMessage(text) {
       parts.error.textContent = '';
       parts.startButton.hidden = true;

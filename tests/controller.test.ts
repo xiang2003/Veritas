@@ -1,38 +1,43 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createController, type Phase, type SttLike, type View } from '../src/sidepanel/controller.ts';
+import { createController, type Phase, type View } from '../src/sidepanel/controller.ts';
+import type { RecorderHandlers, RecorderLike } from '../src/lib/recorder.ts';
 import type { TutorTurn } from '../src/lib/tutor.ts';
 
 const article = { url: 'u', title: 'Title', text: 'text' };
-const turn = (reply: string): TutorTurn => ({ reply, corrections: [], betterAnswer: '', praise: '' });
+const clip = { mimeType: 'audio/webm', data: 'AAA' };
+const turn = (reply: string, transcript = ''): TutorTurn => ({
+  transcript, reply, corrections: [], betterAnswer: '', pronunciation: '', praise: '',
+});
 
-function setup(sendImpl: (t: string) => Promise<TutorTurn> = async () => turn('ok')) {
+function setup(overrides: { sendAudio?: () => Promise<TutorTurn> } = {}) {
   const log: string[] = [];
   const phases: Phase[] = [];
   const view: View = {
     setPhase: (p) => phases.push(p),
     setArticleTitle: (t) => log.push(`title:${t}`),
     clearConversation: () => log.push('clear'),
-    setDraft: (t) => log.push(`draft:${t}`),
     addUserMessage: (t) => log.push(`user:${t}`),
     addTutorTurn: (t) => log.push(`tutor:${t.reply}`),
     showError: (m) => log.push(`error:${m}`),
   };
-  let handlers!: Parameters<SttLike['start']>[0];
-  const stt: SttLike = {
-    supported: true,
-    start: (h) => (handlers = h, log.push('stt:start')),
-    stop: () => {
-      log.push('stt:stop');
-      handlers?.onEnd(); // real recognition fires onEnd after stop()
-    },
+  let handlers!: RecorderHandlers;
+  const recorder: RecorderLike = {
+    start: (h) => ((handlers = h), void log.push('rec:start')),
+    stop: () => void log.push('rec:stop'),
   };
   const spoken: string[] = [];
-  const tts = { speak: async (t: string) => void spoken.push(t), stop: () => log.push('tts:stop') };
-  const session = { start: async () => turn('hello'), send: sendImpl };
-  const controller = createController({ createSession: () => session, stt, tts, view, getRate: () => 1, silenceMs: 20 });
+  const tts = { speak: async (t: string) => void spoken.push(t), stop: () => void log.push('tts:stop') };
+  const session = {
+    start: async () => turn('hello'),
+    send: async (t: string) => turn(`re:${t}`, t),
+    sendAudio: overrides.sendAudio ?? (async () => turn('nice', 'i goed there')),
+  };
+  const controller = createController({ createSession: () => session, recorder, tts, view, getRate: () => 1 });
   return { controller, log, phases, spoken, handlers: () => handlers };
 }
+
+const tick = () => new Promise((r) => setImmediate(r));
 
 test('setArticle(null) shows the no-article state', () => {
   const s = setup();
@@ -45,12 +50,13 @@ test('start shows the opening turn, speaks it and returns to ready', async () =>
   s.controller.setArticle(article);
   await s.controller.start();
   assert.ok(s.log.includes('tutor:hello'));
+  assert.ok(!s.log.some((l) => l.startsWith('user:')));
   assert.deepEqual(s.spoken, ['hello']);
   assert.deepEqual(s.phases.slice(-3), ['thinking', 'speaking', 'ready']);
 });
 
 test('typed submit shows user text then the tutor turn', async () => {
-  const s = setup(async (t) => turn(`re:${t}`));
+  const s = setup();
   s.controller.setArticle(article);
   await s.controller.submitText('  my answer ');
   assert.deepEqual(s.log.filter((l) => /^(user|tutor):/.test(l)), ['user:my answer', 'tutor:re:my answer']);
@@ -63,48 +69,53 @@ test('blank submit does nothing', async () => {
   assert.equal(s.log.filter((l) => l.startsWith('user:')).length, 0);
 });
 
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-test('speech: a final result mid-answer does not submit; silence does, exactly once', async () => {
+test('spoken answer: recording is sent to the tutor and the transcript is shown', async () => {
   const s = setup();
   s.controller.setArticle(article);
   s.controller.toggleMic();
   assert.equal(s.phases.at(-1), 'listening');
-  s.handlers().onResult('I think', true);
-  await wait(5);
-  s.handlers().onResult('I think it is bad', true);
-  await wait(5);
-  assert.equal(s.log.filter((l) => l.startsWith('user:')).length, 0);
-  await wait(40);
-  assert.deepEqual(s.log.filter((l) => l.startsWith('user:')), ['user:I think it is bad']);
+  s.handlers().onClip(clip);
+  await tick();
+  assert.deepEqual(s.log.filter((l) => /^(user|tutor):/.test(l)), ['user:i goed there', 'tutor:nice']);
+  assert.equal(s.phases.at(-1), 'ready');
 });
 
-test('speech: pressing stop submits what was heard', async () => {
+test('pressing the mic while recording stops the recorder', () => {
   const s = setup();
   s.controller.setArticle(article);
   s.controller.toggleMic();
-  s.handlers().onResult('half sentence', false);
   s.controller.toggleMic();
-  await wait(5);
-  assert.ok(s.log.includes('user:half sentence'));
+  assert.equal(s.log.filter((l) => l === 'rec:stop').length, 2); // setArticle() + the toggle
 });
 
-test('speech errors are surfaced and nothing is submitted', () => {
+test('silence-only recording reports no speech and recovers', () => {
+  const s = setup();
+  s.controller.setArticle(article);
+  s.controller.toggleMic();
+  s.handlers().onClip(null);
+  assert.ok(s.log.includes('error:No speech detected. Try again.'));
+  assert.equal(s.phases.at(-1), 'ready');
+});
+
+test('microphone errors are surfaced and the panel recovers', () => {
   const s = setup();
   s.controller.setArticle(article);
   s.controller.toggleMic();
   s.handlers().onError('denied');
-  s.handlers().onEnd();
   assert.ok(s.log.includes('error:denied'));
   assert.equal(s.phases.at(-1), 'ready');
 });
 
 test('tutor failure is shown and the panel recovers', async () => {
-  const s = setup(async () => {
-    throw new Error('quota');
+  const s = setup({
+    sendAudio: async () => {
+      throw new Error('quota');
+    },
   });
   s.controller.setArticle(article);
-  await s.controller.submitText('hello');
+  s.controller.toggleMic();
+  s.handlers().onClip(clip);
+  await tick();
   assert.ok(s.log.includes('error:quota'));
   assert.equal(s.phases.at(-1), 'ready');
 });
@@ -114,5 +125,5 @@ test('new article resets the conversation and stops audio', () => {
   s.controller.setArticle(article);
   s.controller.setArticle({ ...article, url: 'v' });
   assert.equal(s.log.filter((l) => l === 'clear').length, 2);
-  assert.ok(s.log.includes('tts:stop') && s.log.includes('stt:stop'));
+  assert.ok(s.log.includes('tts:stop') && s.log.includes('rec:stop'));
 });
