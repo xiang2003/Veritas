@@ -87,3 +87,18 @@ test('typed answers echo the typed text as transcript', async () => {
 test('system prompt demands a verbatim transcript', () => {
   assert.match(buildTutorSystemPrompt(article, opts), /word for word/);
 });
+
+test('a session can resume from saved history and exposes it for saving', async () => {
+  const sent: JsonRequest[] = [];
+  const client: JsonGenerator = { generateJson: async (r) => (sent.push(structuredClone(r)), good) };
+  const saved = [
+    { role: 'model' as const, text: 'Hi!' },
+    { role: 'user' as const, text: 'hello' },
+  ];
+  const s = createTutorSession(client, article, opts, saved);
+  await s.send('again');
+  assert.deepEqual(sent[0]!.messages.map((m) => m.text), ['Hi!', 'hello', 'again']);
+  assert.equal(s.history.length, 4);
+  s.history.pop(); // the returned copy must not mutate the session
+  assert.equal(s.history.length, 4);
+});

@@ -5,7 +5,7 @@ import { createRecorder } from '../lib/recorder.ts';
 import { createTts } from '../lib/speech.ts';
 import { createTutorSession } from '../lib/tutor.ts';
 import type { ArticleData } from '../lib/types.ts';
-import { createController } from './controller.ts';
+import { createController, type ConversationStore, type SavedConversation } from './controller.ts';
 import { createView } from './view.ts';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
@@ -27,9 +27,19 @@ const view = createView(
   (text) => replay(text),
 );
 
+/** Conversations live in session storage: they survive tab switches and closing the panel, not a browser restart. */
+const conversationStore: ConversationStore = {
+  async load(url) {
+    const key = `conv:${url}`;
+    return ((await chrome.storage.session.get(key))[key] as SavedConversation | undefined) ?? null;
+  },
+  save: (url, conversation) => chrome.storage.session.set({ [`conv:${url}`]: conversation }),
+};
+
 const controller = createController({
   // Level/language are read when a session is created (refresh() loads the latest settings first).
-  createSession: (article) => createTutorSession(client, article, latestSettings),
+  createSession: (article, history) => createTutorSession(client, article, latestSettings, history),
+  store: conversationStore,
   recorder: createRecorder(),
   tts: createTts({ synth: speechSynthesis, createUtterance: (t) => new SpeechSynthesisUtterance(t) }),
   view,
@@ -50,7 +60,7 @@ async function refresh(): Promise<void> {
   const article = await loadActiveArticle();
   if (article?.url === currentUrl) return; // same article: keep the conversation going
   currentUrl = article?.url;
-  controller.setArticle(article);
+  await controller.setArticle(article);
   if (article && !latestSettings.apiKey) view.showError('Add your Gemini API key in the extension options.');
 }
 

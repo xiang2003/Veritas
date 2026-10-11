@@ -70,8 +70,13 @@ export function parseTutorTurn(raw: unknown): TutorTurn {
 }
 
 /** Holds the conversation history for one article. */
-export function createTutorSession(client: JsonGenerator, article: ArticleData, options: TutorOptions) {
-  const history: ChatMessage[] = [];
+export function createTutorSession(
+  client: JsonGenerator,
+  article: ArticleData,
+  options: TutorOptions,
+  initialHistory: ChatMessage[] = [],
+) {
+  const history: ChatMessage[] = [...initialHistory];
   const system = buildTutorSystemPrompt(article, options);
 
   async function say(message: ChatMessage, historyText: (turn: TutorTurn) => string): Promise<TutorTurn> {
@@ -93,6 +98,9 @@ export function createTutorSession(client: JsonGenerator, article: ArticleData, 
       say({ role: 'user', text: AUDIO_PROMPT, audio }, (turn) => turn.transcript || '(unintelligible)'),
     get length() {
       return history.length;
+    },
+    get history(): ChatMessage[] {
+      return [...history];
     },
   };
 }
