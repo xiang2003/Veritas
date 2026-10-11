@@ -1,0 +1,81 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createHandlers } from '../src/background/handlers.ts';
+import { DEFAULT_SETTINGS, type Settings, type StorageLike } from '../src/lib/settings.ts';
+import type { JsonGenerator } from '../src/lib/gemini.ts';
+
+const article = { url: 'https://cnn.com/a', title: 'T', text: 'An eloquent speech.' };
+const raw = { entries: [{ term: 'eloquent', meaning: '雄辯的' }] };
+
+function memory(): StorageLike & { data: Record<string, unknown> } {
+  const data: Record<string, unknown> = {};
+  return {
+    data,
+    get: async (keys) => Object.fromEntries(keys.filter((k) => k in data).map((k) => [k, data[k]])),
+    set: async (items) => void Object.assign(data, items),
+  };
+}
+
+function setup(overrides: Partial<Settings> = {}, generate: JsonGenerator['generateJson'] = async () => raw) {
+  let calls = 0;
+  const client: JsonGenerator = { generateJson: async (r) => (calls++, generate(r)) };
+  const cache = memory();
+  const session = memory();
+  const settings = { ...DEFAULT_SETTINGS, apiKey: 'k', ...overrides };
+  const handlers = createHandlers({ client, getSettings: async () => settings, cache, session });
+  return { handlers, cache, session, calls: () => calls };
+}
+
+test('ignores unknown messages', () => {
+  assert.equal(setup().handlers.handle({ type: 'nope' } as never), undefined);
+});
+
+test('analyzes, registers article for the tab and caches the result', async () => {
+  const s = setup();
+  const res = await s.handlers.handle({ type: 'analyze', article }, 7);
+  assert.ok(res!.ok && res!.entries[0]!.term === 'eloquent');
+  assert.deepEqual(s.session.data['article:7'], article);
+  assert.ok(s.cache.data[`vocab:${article.url}`]);
+});
+
+test('second request for same article and settings hits the cache', async () => {
+  const s = setup();
+  await s.handlers.handle({ type: 'analyze', article }, 1);
+  await s.handlers.handle({ type: 'analyze', article }, 1);
+  assert.equal(s.calls(), 1);
+});
+
+test('changing level invalidates the cache', async () => {
+  const s = setup();
+  await s.handlers.handle({ type: 'analyze', article }, 1);
+  const h2 = createHandlers({
+    client: { generateJson: async () => raw }, cache: s.cache, session: s.session,
+    getSettings: async () => ({ ...DEFAULT_SETTINGS, apiKey: 'k', level: 'C2' }),
+  });
+  await h2.handle({ type: 'analyze', article }, 1);
+  assert.equal((s.cache.data[`vocab:${article.url}`] as { signature: string }).signature, 'C2|Traditional Chinese');
+});
+
+test('autoHighlight off still registers the article but skips the AI call', async () => {
+  const s = setup({ autoHighlight: false });
+  const res = await s.handlers.handle({ type: 'analyze', article }, 3);
+  assert.deepEqual(res, { ok: true, entries: [] });
+  assert.equal(s.calls(), 0);
+  assert.ok(s.session.data['article:3']);
+});
+
+test('AI failures become an error response, not an exception', async () => {
+  const s = setup({}, async () => {
+    throw new Error('quota');
+  });
+  assert.deepEqual(await s.handlers.handle({ type: 'analyze', article }, 1), { ok: false, error: 'quota' });
+});
+
+test('evicts the oldest cached article beyond the limit', async () => {
+  const s = setup();
+  for (let i = 0; i < 101; i++) {
+    await s.handlers.handle({ type: 'analyze', article: { ...article, url: `https://x/${i}` } }, 1);
+  }
+  assert.equal(s.cache.data['vocab:https://x/0'], null);
+  assert.ok(s.cache.data['vocab:https://x/100']);
+});
