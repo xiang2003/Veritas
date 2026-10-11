@@ -33,7 +33,7 @@ test('ignores unknown messages', () => {
 test('analyzes, registers article for the tab and caches the result', async () => {
   const s = setup();
   const res = await s.handlers.handle({ type: 'analyze', article }, 7);
-  assert.ok(res!.ok && res!.entries[0]!.term === 'eloquent');
+  assert.ok(res && 'entries' in res && res.entries[0]!.term === 'eloquent');
   assert.deepEqual(s.session.data['article:7'], article);
   assert.ok(s.cache.data[`vocab:${article.url}`]);
 });

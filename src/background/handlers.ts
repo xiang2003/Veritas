@@ -1,5 +1,6 @@
 import type { JsonGenerator } from '../lib/gemini.ts';
-import { articleKey, type AnalyzeRequest, type AnalyzeResponse } from '../lib/messages.ts';
+import { articleKey, type AnalyzeResponse, type Request, type TranslateResponse } from '../lib/messages.ts';
+import { translateParagraph } from '../lib/translate.ts';
 import type { Settings, StorageLike } from '../lib/settings.ts';
 import type { ArticleData, VocabEntry } from '../lib/types.ts';
 import { analyzeVocabulary } from '../lib/vocab.ts';
@@ -53,10 +54,25 @@ export function createHandlers({ client, getSettings, cache, session }: HandlerD
     }
   }
 
+  async function translate(text: string, title: string): Promise<TranslateResponse> {
+    try {
+      const { nativeLanguage } = await getSettings();
+      return { ok: true, translation: await translateParagraph(client, text, { nativeLanguage, title }) };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   return {
-    handle(message: AnalyzeRequest, tabId?: number): Promise<AnalyzeResponse> | undefined {
-      if (message?.type === 'analyze') return analyze(message.article, tabId);
-      return undefined;
+    handle(message: Request, tabId?: number): Promise<AnalyzeResponse | TranslateResponse> | undefined {
+      switch (message?.type) {
+        case 'analyze':
+          return analyze(message.article, tabId);
+        case 'translate':
+          return translate(message.text, message.title);
+        default:
+          return undefined;
+      }
     },
   };
 }

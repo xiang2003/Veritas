@@ -1,5 +1,7 @@
+import { UI_CLASS } from './paragraphs.ts';
+
 export const TERM_CLASS = 'veritas-term';
-const SKIP_SELECTOR = `script,style,noscript,textarea,input,code,pre,.${TERM_CLASS}`;
+const SKIP_SELECTOR = `script,style,noscript,textarea,input,code,pre,.${TERM_CLASS},.${UI_CLASS}`;
 const SHOW_TEXT = 4; // NodeFilter.SHOW_TEXT
 const FILTER_ACCEPT = 1;
 const FILTER_REJECT = 2;
