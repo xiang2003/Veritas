@@ -1,0 +1,15 @@
+:root { color-scheme: light dark; --accent: #4f46e5; --muted: #6b7280; --border: #d0d4dc; --surface: #f6f7fb; }
+@media (prefers-color-scheme: dark) { :root { --border: #3a4152; --surface: #1f2430; --muted: #9aa3b5; } }
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.5 system-ui, sans-serif; }
+.page { max-width: 520px; margin: 32px auto; padding: 0 16px; }
+form { display: grid; gap: 16px; }
+label { display: grid; gap: 4px; font-weight: 600; }
+label.row { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+small { color: var(--muted); font-weight: 400; }
+input[type="text"], input[type="password"], input[type="number"], select, textarea {
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; background: transparent; color: inherit; }
+button { padding: 8px 14px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; cursor: pointer; }
+button.secondary { background: transparent; color: inherit; border: 1px solid var(--border); }
+button:disabled { opacity: .5; cursor: default; }
+.actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
