@@ -4,6 +4,7 @@ import { cp, rm } from 'node:fs/promises';
 const watch = process.argv.includes('--watch');
 await rm('dist', { recursive: true, force: true });
 await cp('static', 'dist', { recursive: true });
+await cp('icons', 'dist/icons', { recursive: true });
 
 const common = { bundle: true, target: 'chrome114', sourcemap: true, logLevel: 'info' };
 const entries = [
