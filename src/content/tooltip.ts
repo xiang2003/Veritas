@@ -1,0 +1,101 @@
+import type { VocabEntry } from '../lib/types.ts';
+import { TERM_CLASS } from './highlighter.ts';
+import { computePosition } from './tooltip-position.ts';
+
+const HIDE_DELAY_MS = 150;
+
+const STYLE = `
+:host { all: initial; }
+.card { position: fixed; z-index: 2147483647; max-width: 320px; padding: 12px 14px; display: none;
+  background: #fff; color: #1b1b1f; border: 1px solid #d0d4dc; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.18); font: 14px/1.45 system-ui, sans-serif; }
+.head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.term { font-weight: 700; font-size: 16px; }
+.meta { color: #6b7280; font-size: 12px; }
+button { all: unset; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+button:hover { background: #eef2ff; }
+.meaning { font-weight: 600; margin: 4px 0; }
+.label { color: #6b7280; font-size: 12px; margin-top: 6px; }
+@media (prefers-color-scheme: dark) {
+  .card { background: #1f2430; color: #e8eaf0; border-color: #3a4152; }
+  button:hover { background: #2c3347; }
+}`;
+
+function el(doc: Document, tag: string, className = '', text = ''): HTMLElement {
+  const node = doc.createElement(tag);
+  if (className) node.className = className;
+  if (text) node.textContent = text;
+  return node;
+}
+
+/** Builds the card contents with textContent only – model output is never parsed as HTML. */
+export function renderEntry(doc: Document, entry: VocabEntry, onSpeak: (text: string) => void): DocumentFragment {
+  const frag = doc.createDocumentFragment();
+
+  const head = el(doc, 'div', 'head');
+  head.append(el(doc, 'span', 'term', entry.term));
+  if (entry.ipa) head.append(el(doc, 'span', 'meta', entry.ipa));
+  const speak = el(doc, 'button', '', '🔊');
+  speak.title = 'Pronounce';
+  speak.addEventListener('click', () => onSpeak(entry.term));
+  head.append(speak);
+  frag.append(head);
+
+  if (entry.pos) frag.append(el(doc, 'div', 'meta', entry.pos));
+  frag.append(el(doc, 'div', 'meaning', entry.meaning));
+  if (entry.definition) frag.append(el(doc, 'div', '', entry.definition));
+  if (entry.example) frag.append(el(doc, 'div', 'label', 'Example'), el(doc, 'div', '', entry.example));
+  if (entry.usage) frag.append(el(doc, 'div', 'label', 'Usage'), el(doc, 'div', '', entry.usage));
+  return frag;
+}
+
+export interface TooltipDeps {
+  lookup: (term: string) => VocabEntry | undefined;
+  speak: (text: string) => void;
+}
+
+/** Hover tooltip for highlighted terms (rendered in a shadow root so page CSS cannot leak in). */
+export function createTooltip(doc: Document, { lookup, speak }: TooltipDeps) {
+  const host = doc.createElement('div');
+  const shadow = host.attachShadow({ mode: 'open' });
+  const style = doc.createElement('style');
+  style.textContent = STYLE;
+  const card = el(doc, 'div', 'card');
+  shadow.append(style, card);
+  doc.body.append(host);
+
+  const win = doc.defaultView!;
+  let hideTimer: ReturnType<typeof setTimeout> | undefined;
+  const termOf = (e: Event) => (e.target as Element | null)?.closest?.<HTMLElement>(`.${TERM_CLASS}`) ?? null;
+
+  function show(target: HTMLElement) {
+    const entry = lookup(target.dataset.term ?? '');
+    if (!entry) return;
+    clearTimeout(hideTimer);
+    card.replaceChildren(renderEntry(doc, entry, speak));
+    card.style.display = 'block';
+    const pos = computePosition(
+      target.getBoundingClientRect(),
+      { width: card.offsetWidth, height: card.offsetHeight },
+      { width: win.innerWidth, height: win.innerHeight },
+    );
+    card.style.top = `${pos.top}px`;
+    card.style.left = `${pos.left}px`;
+  }
+
+  const scheduleHide = () => {
+    hideTimer = setTimeout(() => (card.style.display = 'none'), HIDE_DELAY_MS);
+  };
+
+  doc.addEventListener('mouseover', (e) => {
+    const target = termOf(e);
+    if (target) show(target);
+  });
+  doc.addEventListener('mouseout', (e) => {
+    if (termOf(e)) scheduleHide();
+  });
+  card.addEventListener('mouseenter', () => clearTimeout(hideTimer));
+  card.addEventListener('mouseleave', scheduleHide);
+
+  return { card, destroy: () => host.remove() };
+}
