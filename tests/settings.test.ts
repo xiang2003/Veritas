@@ -1,14 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSettings, DEFAULT_SETTINGS } from '../src/lib/settings.js';
+import { createSettings, DEFAULT_SETTINGS, type StorageLike } from '../src/lib/settings.ts';
 
-function fakeArea(initial = {}) {
+function fakeArea(initial: Record<string, unknown> = {}) {
   const data = { ...initial };
-  return {
+  const area: StorageLike & { data: Record<string, unknown> } = {
     data,
     get: async (keys) => Object.fromEntries(keys.filter((k) => k in data).map((k) => [k, data[k]])),
-    set: async (patch) => Object.assign(data, patch),
+    set: async (patch) => void Object.assign(data, patch),
   };
+  return area;
 }
 
 test('get merges stored values over defaults', async () => {
@@ -18,6 +19,6 @@ test('get merges stored values over defaults', async () => {
 
 test('set ignores unknown keys', async () => {
   const area = fakeArea();
-  await createSettings(area).set({ level: 'C1', evil: 1 });
+  await createSettings(area).set({ level: 'C1', evil: 1 } as never);
   assert.deepEqual(area.data, { level: 'C1' });
 });

@@ -1,15 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeEntries, analyzeVocabulary, buildVocabSystemPrompt } from '../src/lib/vocab.js';
+import { normalizeEntries, analyzeVocabulary, buildVocabSystemPrompt } from '../src/lib/vocab.ts';
+import type { JsonGenerator, JsonRequest } from '../src/lib/gemini.ts';
 
 const ARTICLE = 'The mayor gave an eloquent speech. Critics said it was a red herring.';
-const row = (o) => ({ term: 'eloquent', meaning: '雄辯的', ...o });
+const row = (o: object = {}) => ({ term: 'eloquent', meaning: '雄辯的', ...o });
 
 test('keeps valid entries and fills defaults', () => {
   const [e] = normalizeEntries({ entries: [row({ ipa: ' /x/ ' })] }, ARTICLE);
-  assert.equal(e.lemma, 'eloquent');
-  assert.equal(e.ipa, '/x/');
-  assert.equal(e.example, '');
+  assert.equal(e!.lemma, 'eloquent');
+  assert.equal(e!.ipa, '/x/');
+  assert.equal(e!.example, '');
 });
 
 test('drops hallucinated terms, duplicates and rows without meaning', () => {
@@ -32,9 +33,9 @@ test('prompt carries level and native language', () => {
 });
 
 test('analyzeVocabulary sends article to client and normalizes result', async () => {
-  let sent;
-  const client = { generateJson: async (r) => ((sent = r), { entries: [row()] }) };
-  const out = await analyzeVocabulary(client, { title: 'T', text: ARTICLE }, { level: 'B2', nativeLanguage: 'X' });
+  let sent!: JsonRequest;
+  const client: JsonGenerator = { generateJson: async (r) => ((sent = r), { entries: [row()] }) };
+  const out = await analyzeVocabulary(client, { url: '', title: 'T', text: ARTICLE }, { level: 'B2', nativeLanguage: 'X' });
   assert.equal(out.length, 1);
-  assert.match(sent.messages[0].text, /Title: T/);
+  assert.match(sent.messages[0]!.text, /Title: T/);
 });

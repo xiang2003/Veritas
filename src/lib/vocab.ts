@@ -1,6 +1,14 @@
+import type { JsonGenerator } from './gemini.ts';
+import type { ArticleData, VocabEntry } from './types.ts';
+
 const MAX_ENTRIES = 40;
 
-export function buildVocabSystemPrompt({ level, nativeLanguage }) {
+export interface VocabOptions {
+  level: string;
+  nativeLanguage: string;
+}
+
+export function buildVocabSystemPrompt({ level, nativeLanguage }: VocabOptions): string {
   return `You are an English vocabulary coach for a learner at CEFR level ${level}.
 From the news article provided, select 15-30 words and phrases (idioms, phrasal verbs, collocations) that this learner is likely NOT to know. Skip proper nouns and very common words.
 Return JSON: {"entries":[{"term","lemma","pos","ipa","definition","meaning","example","usage"}]} where
@@ -14,17 +22,18 @@ Return JSON: {"entries":[{"term","lemma","pos","ipa","definition","meaning","exa
 - usage: one short note in ${nativeLanguage} on usage, register or common collocations`;
 }
 
-const text = (v) => (typeof v === 'string' ? v.trim() : '');
+const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 
 /**
  * Validate the model's output: drop malformed rows, terms not actually in the article,
  * and duplicates.
  */
-export function normalizeEntries(raw, articleText) {
+export function normalizeEntries(raw: unknown, articleText: string): VocabEntry[] {
+  const rows = (raw as { entries?: unknown } | null)?.entries;
   const haystack = articleText.toLowerCase();
-  const seen = new Set();
-  const entries = [];
-  for (const row of Array.isArray(raw?.entries) ? raw.entries : []) {
+  const seen = new Set<string>();
+  const entries: VocabEntry[] = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
     const term = text(row?.term);
     const key = term.toLowerCase();
     if (!term || seen.has(key) || !haystack.includes(key) || !text(row.meaning)) continue;
@@ -44,9 +53,13 @@ export function normalizeEntries(raw, articleText) {
   return entries;
 }
 
-export async function analyzeVocabulary(client, article, { level, nativeLanguage }) {
+export async function analyzeVocabulary(
+  client: JsonGenerator,
+  article: ArticleData,
+  options: VocabOptions,
+): Promise<VocabEntry[]> {
   const raw = await client.generateJson({
-    system: buildVocabSystemPrompt({ level, nativeLanguage }),
+    system: buildVocabSystemPrompt(options),
     messages: [{ role: 'user', text: `Title: ${article.title}\n\n${article.text}` }],
     temperature: 0.2,
   });

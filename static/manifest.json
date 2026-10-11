@@ -4,12 +4,25 @@
   "version": "0.1.0",
   "description": "Highlight hard vocabulary in English news and practice speaking about it with an AI tutor.",
   "minimum_chrome_version": "114",
-  "permissions": ["storage", "sidePanel", "tabs"],
-  "host_permissions": ["https://generativelanguage.googleapis.com/*"],
-  "background": { "service_worker": "src/background/index.js", "type": "module" },
-  "side_panel": { "default_path": "src/sidepanel/index.html" },
-  "options_page": "src/options/index.html",
-  "action": { "default_title": "Veritas – open tutor" },
+  "permissions": [
+    "storage",
+    "sidePanel",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "options_page": "options.html",
+  "action": {
+    "default_title": "Veritas – open tutor"
+  },
   "content_scripts": [
     {
       "matches": [
@@ -25,11 +38,10 @@
         "https://*.cnbc.com/*",
         "https://time.com/*"
       ],
-      "js": ["src/content/loader.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
-  ],
-  "web_accessible_resources": [
-    { "resources": ["src/**/*.js"], "matches": ["<all_urls>"] }
   ]
 }
