@@ -22,12 +22,15 @@ function setup(sendImpl: (t: string) => Promise<TutorTurn> = async () => turn('o
   const stt: SttLike = {
     supported: true,
     start: (h) => (handlers = h, log.push('stt:start')),
-    stop: () => log.push('stt:stop'),
+    stop: () => {
+      log.push('stt:stop');
+      handlers?.onEnd(); // real recognition fires onEnd after stop()
+    },
   };
   const spoken: string[] = [];
   const tts = { speak: async (t: string) => void spoken.push(t), stop: () => log.push('tts:stop') };
   const session = { start: async () => turn('hello'), send: sendImpl };
-  const controller = createController({ createSession: () => session, stt, tts, view, getRate: () => 1 });
+  const controller = createController({ createSession: () => session, stt, tts, view, getRate: () => 1, silenceMs: 20 });
   return { controller, log, phases, spoken, handlers: () => handlers };
 }
 
@@ -60,26 +63,29 @@ test('blank submit does nothing', async () => {
   assert.equal(s.log.filter((l) => l.startsWith('user:')).length, 0);
 });
 
-test('speech: final transcript is submitted once', async () => {
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+test('speech: a final result mid-answer does not submit; silence does, exactly once', async () => {
   const s = setup();
   s.controller.setArticle(article);
   s.controller.toggleMic();
   assert.equal(s.phases.at(-1), 'listening');
-  s.handlers().onResult('hi there', false);
-  s.handlers().onResult('hi there friend', true);
-  s.handlers().onEnd();
-  await new Promise((r) => setImmediate(r));
-  assert.equal(s.log.filter((l) => l === 'user:hi there friend').length, 1);
-  assert.equal(s.log.filter((l) => l.startsWith('user:')).length, 1);
+  s.handlers().onResult('I think', true);
+  await wait(5);
+  s.handlers().onResult('I think it is bad', true);
+  await wait(5);
+  assert.equal(s.log.filter((l) => l.startsWith('user:')).length, 0);
+  await wait(40);
+  assert.deepEqual(s.log.filter((l) => l.startsWith('user:')), ['user:I think it is bad']);
 });
 
-test('speech: transcript is not lost when recognition ends without a final result', async () => {
+test('speech: pressing stop submits what was heard', async () => {
   const s = setup();
   s.controller.setArticle(article);
   s.controller.toggleMic();
   s.handlers().onResult('half sentence', false);
-  s.handlers().onEnd();
-  await new Promise((r) => setImmediate(r));
+  s.controller.toggleMic();
+  await wait(5);
   assert.ok(s.log.includes('user:half sentence'));
 });
 
@@ -91,14 +97,6 @@ test('speech errors are surfaced and nothing is submitted', () => {
   s.handlers().onEnd();
   assert.ok(s.log.includes('error:denied'));
   assert.equal(s.phases.at(-1), 'ready');
-});
-
-test('toggling the mic while listening stops recognition', () => {
-  const s = setup();
-  s.controller.setArticle(article);
-  s.controller.toggleMic();
-  s.controller.toggleMic();
-  assert.ok(s.log.includes('stt:stop'));
 });
 
 test('tutor failure is shown and the panel recovers', async () => {

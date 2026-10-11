@@ -40,14 +40,19 @@ export interface ControllerDeps {
   tts: TtsLike;
   view: View;
   getRate: () => number;
+  /** Silence after the last word before the answer is submitted automatically. */
+  silenceMs?: number;
 }
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function createController({ createSession, stt, tts, view, getRate }: ControllerDeps) {
+const DEFAULT_SILENCE_MS = 2500;
+
+export function createController({ createSession, stt, tts, view, getRate, silenceMs = DEFAULT_SILENCE_MS }: ControllerDeps) {
   let session: TutorSessionLike | undefined;
   let phase: Phase = 'no-article';
   let pending = ''; // transcript heard but not yet submitted
+  let silenceTimer: ReturnType<typeof setTimeout> | undefined;
 
   function setPhase(next: Phase) {
     phase = next;
@@ -72,6 +77,7 @@ export function createController({ createSession, stt, tts, view, getRate }: Con
 
   async function submit(text: string) {
     const trimmed = text.trim();
+    clearTimeout(silenceTimer);
     pending = '';
     view.setDraft('');
     if (trimmed && phase !== 'thinking') await converse((s) => s.send(trimmed), trimmed);
@@ -83,6 +89,7 @@ export function createController({ createSession, stt, tts, view, getRate }: Con
       stt.stop();
       tts.stop();
       view.clearConversation();
+      clearTimeout(silenceTimer);
       pending = '';
       if (!article) {
         session = undefined;
@@ -104,12 +111,15 @@ export function createController({ createSession, stt, tts, view, getRate }: Con
       tts.stop();
       setPhase('listening');
       stt.start({
-        onResult: (transcript, final) => {
+        onResult: (transcript) => {
           pending = transcript;
           view.setDraft(transcript);
-          if (final) void submit(transcript);
+          // Submit only after a real pause, not at the first breath.
+          clearTimeout(silenceTimer);
+          silenceTimer = setTimeout(() => stt.stop(), silenceMs);
         },
         onError: (message) => {
+          clearTimeout(silenceTimer);
           pending = '';
           view.showError(message);
         },

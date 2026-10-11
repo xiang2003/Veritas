@@ -70,7 +70,7 @@ export function createStt(makeRecognition: (() => RecognitionLike) | undefined) 
       const rec = makeRecognition();
       rec.lang = LANG;
       rec.interimResults = true;
-      rec.continuous = false;
+      rec.continuous = true; // keep listening through pauses; the caller decides when the answer is complete
       rec.onresult = (e) => {
         const results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> = e.results;
         const parts = Array.from(results, (r) => r[0]!.transcript);
