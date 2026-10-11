@@ -33,8 +33,15 @@ export interface JsonGenerator {
   generateJson(request: JsonRequest): Promise<unknown>;
 }
 
+/** Overload and rate-limit responses that usually clear up within seconds. */
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+const MAX_ATTEMPTS = 3;
+const BASE_DELAY_MS = 1000;
+
 interface GeminiDeps {
   fetch?: typeof fetch;
+  /** Injected so tests do not actually wait. */
+  sleep?: (ms: number) => Promise<void>;
   getSettings: () => Promise<{ apiKey: string; model: string }>;
 }
 
@@ -64,13 +71,17 @@ function toContent(m: ChatMessage) {
   return { role: m.role, parts };
 }
 
-export function createGeminiClient({ fetch: fetchImpl = globalThis.fetch, getSettings }: GeminiDeps): JsonGenerator {
+export function createGeminiClient({
+  fetch: fetchImpl = globalThis.fetch,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  getSettings,
+}: GeminiDeps): JsonGenerator {
   return {
     async generateJson({ system, messages, temperature = 0.4 }) {
       const { apiKey, model } = await getSettings();
       if (!apiKey) throw new GeminiError('Gemini API key is not set. Open the extension options.');
 
-      const response = await fetchImpl(`${ENDPOINT}/${model}:generateContent`, {
+      const init: RequestInit = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
@@ -78,7 +89,14 @@ export function createGeminiClient({ fetch: fetchImpl = globalThis.fetch, getSet
           contents: messages.map(toContent),
           generationConfig: { responseMimeType: 'application/json', temperature },
         }),
-      });
+      };
+
+      let response!: Response;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        response = await fetchImpl(`${ENDPOINT}/${model}:generateContent`, init);
+        if (response.ok || !RETRYABLE.has(response.status) || attempt === MAX_ATTEMPTS) break;
+        await sleep(BASE_DELAY_MS * 2 ** (attempt - 1));
+      }
 
       if (!response.ok) {
         const detail = await response.json().then((j: any) => j?.error?.message as string | undefined, () => undefined);

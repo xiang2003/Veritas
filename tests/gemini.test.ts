@@ -58,3 +58,39 @@ test('audio is sent as an inline_data part before the text', async () => {
   await client.generateJson({ system: 's', messages: [{ role: 'user', text: 'say', audio: { mimeType: 'audio/webm', data: 'AAA' } }] });
   assert.deepEqual(body.contents[0].parts, [{ inline_data: { mime_type: 'audio/webm', data: 'AAA' } }, { text: 'say' }]);
 });
+
+const failing = (status: number) => ({ ok: false, status, json: async () => ({ error: { message: `E${status}` } }) }) as Response;
+
+test('retries overloaded responses with backoff, then succeeds', async () => {
+  const replies = [failing(503), failing(503), ok('{"a":1}')];
+  const waits: number[] = [];
+  const client = createGeminiClient({
+    getSettings: settings,
+    fetch: async () => replies.shift()!,
+    sleep: async (ms) => void waits.push(ms),
+  });
+  assert.deepEqual(await client.generateJson(req), { a: 1 });
+  assert.deepEqual(waits, [1000, 2000]);
+});
+
+test('gives up after three attempts and reports the last error', async () => {
+  let calls = 0;
+  const client = createGeminiClient({
+    getSettings: settings,
+    fetch: async () => (calls++, failing(503)),
+    sleep: async () => {},
+  });
+  await assert.rejects(client.generateJson(req), (e: unknown) => e instanceof GeminiError && e.status === 503);
+  assert.equal(calls, 3);
+});
+
+test('does not retry client errors such as an invalid key', async () => {
+  let calls = 0;
+  const client = createGeminiClient({
+    getSettings: settings,
+    fetch: async () => (calls++, failing(400)),
+    sleep: async () => {},
+  });
+  await assert.rejects(client.generateJson(req), /E400/);
+  assert.equal(calls, 1);
+});
