@@ -46,7 +46,7 @@ export function createHandlers({ client, getSettings, cache, session }: HandlerD
       if (hit && hit.signature === signature) return { ok: true, entries: hit.entries };
 
       const entries = await analyzeVocabulary(client, article, settings);
-      await remember(article.url, { signature, entries });
+      if (entries.length) await remember(article.url, { signature, entries }); // never cache an empty result
       return { ok: true, entries };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };

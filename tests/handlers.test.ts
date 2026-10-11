@@ -79,3 +79,10 @@ test('evicts the oldest cached article beyond the limit', async () => {
   assert.equal(s.cache.data['vocab:https://x/0'], null);
   assert.ok(s.cache.data['vocab:https://x/100']);
 });
+
+test('empty AI results are not cached, so the next visit retries', async () => {
+  const s = setup({}, async () => ({ entries: [] }));
+  await s.handlers.handle({ type: 'analyze', article }, 1);
+  await s.handlers.handle({ type: 'analyze', article }, 1);
+  assert.equal(s.calls(), 2);
+});
