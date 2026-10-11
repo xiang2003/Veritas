@@ -9,7 +9,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   apiKey: '',
-  model: 'gemini-2.5-flash',
+  model: 'gemini-3.8-flash',
   nativeLanguage: 'Traditional Chinese',
   level: 'B2',
   autoHighlight: true,
