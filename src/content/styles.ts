@@ -1,5 +1,6 @@
 import { TERM_CLASS } from './highlighter.ts';
 import { BUTTON_CLASS, PANEL_CLASS, TOOLS_CLASS } from './paragraphs.ts';
+import { PICK_BADGE_CLASS } from './recommend-ui.ts';
 
 const CSS = `
 .${TERM_CLASS} { text-decoration: underline; text-decoration-style: dotted;
@@ -12,7 +13,9 @@ p:hover > .${TOOLS_CLASS}, .${TOOLS_CLASS}:focus-within { opacity: 1; }
 .${BUTTON_CLASS}.open { background: #4f46e5; color: #fff; border-color: #4f46e5; }
 .${PANEL_CLASS} { clear: both; margin: 4px 0 18px; padding: 8px 12px; border-left: 3px solid #4f46e5;
   background: rgba(79, 70, 229, .08); color: inherit; font: 15px/1.6 system-ui, "Noto Sans TC", sans-serif; }
-.${PANEL_CLASS}[hidden] { display: none; }`;
+.${PANEL_CLASS}[hidden] { display: none; }
+.${PICK_BADGE_CLASS} { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 999px; vertical-align: middle;
+  background: #4f46e5; color: #fff; font: 600 11px/18px system-ui, "Noto Sans TC", sans-serif; text-decoration: none; }`;
 
 export function injectStyles(doc: Document): void {
   const style = doc.createElement('style');

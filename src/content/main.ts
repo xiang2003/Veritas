@@ -1,9 +1,11 @@
-import type { AnalyzeRequest, AnalyzeResponse, Request, TranslateResponse } from '../lib/messages.ts';
+import type { AnalyzeRequest, AnalyzeResponse, RecommendResponse, Request, TranslateResponse } from '../lib/messages.ts';
 import { createSettings } from '../lib/settings.ts';
 import { createTts } from '../lib/speech.ts';
 import { extractArticle } from './extract.ts';
+import { collectHeadlines } from './headlines.ts';
 import { highlightTerms } from './highlighter.ts';
 import { createParagraphTools } from './paragraphs.ts';
+import { createRecommendPanel, markPickedLinks } from './recommend-ui.ts';
 import { injectStyles } from './styles.ts';
 import { showToast } from './toast.ts';
 import { createTooltip } from './tooltip.ts';
@@ -22,9 +24,26 @@ function keepApplied(root: Element, apply: () => void): void {
   }).observe(root, { childList: true, subtree: true });
 }
 
+const MIN_HEADLINES_FOR_FRONT_PAGE = 8;
+
+/** Front / section pages: offer AI recommendations of which stories to read. Costs nothing until clicked. */
+function setUpFrontPage(): void {
+  if (collectHeadlines(document).length < MIN_HEADLINES_FOR_FRONT_PAGE) return;
+  injectStyles(document);
+  createRecommendPanel(document, {
+    load: async (force) => {
+      const pageUrl = location.href.split('#')[0]!;
+      const res = await send<RecommendResponse>({ type: 'recommend', pageUrl, headlines: collectHeadlines(document), force });
+      if (!res.ok) throw new Error(res.error);
+      markPickedLinks(document, res.picks);
+      return res.picks;
+    },
+  });
+}
+
 async function main(): Promise<void> {
   const article = extractArticle(document);
-  if (!article) return;
+  if (!article) return setUpFrontPage();
   const { root, ...data } = article;
 
   injectStyles(document);

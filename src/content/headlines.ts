@@ -14,6 +14,13 @@ function isArticleUrl(url: URL, page: URL): boolean {
   return segments.length >= 2 || /\d/.test(url.pathname) || (segments[0]?.length ?? 0) > 30;
 }
 
+/** Link text without anything Veritas inserted (e.g. the ⭐ badge). */
+function linkText(a: HTMLAnchorElement): string {
+  const clone = a.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll('.veritas-ui').forEach((n) => n.remove());
+  return (clone.textContent ?? '').replace(/\s+/g, ' ').trim();
+}
+
 /**
  * Collect story headlines from a news front/section page.
  * Each URL appears once, with its longest link text (cards often link twice: image + title).
@@ -24,7 +31,7 @@ export function collectHeadlines(doc: Document): Headline[] {
 
   for (const a of doc.querySelectorAll<HTMLAnchorElement>('a[href]')) {
     if (a.closest(SKIP_CONTAINERS) || a.closest('.veritas-ui')) continue;
-    const title = (a.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const title = linkText(a);
     const words = title.split(' ').length;
     if (words < MIN_WORDS || words > MAX_WORDS) continue;
 

@@ -4,6 +4,7 @@ Chrome extension (Manifest V3, TypeScript) for reading English news and practisi
 
 - **Vocabulary underlining** – on CNN, BBC, NYT, Guardian, Reuters, AP, WaPo, NPR, CNBC and Time, hard words and phrases are underlined. Hover to see IPA, meaning (in your language), English definition, example and usage; click 🔊 to hear it.
 - **Per-paragraph tools** – every paragraph gets 🔊 (read aloud, click again to stop) and 譯 buttons on its right; click 譯 to see the translation below the paragraph (cached, click again to hide).
+- **What to read** – on a news front or section page, click **✨ 推薦文章** (bottom right): Gemini picks the 5 stories most worth reading for your level and interests (set in Options), with a reason, estimated level and topic, and marks them ⭐ on the page. One request per click, cached for 30 minutes.
 - **Speaking tutor** – click the toolbar icon to open the side panel. Gemini has already read the article; talk about it by voice or typing (your recording is transcribed by Gemini, which also comments on pronunciation). It answers aloud (text-to-speech), lists your mistakes with explanations, and shows a better way to say what you meant.
 
 ## Setup
@@ -30,7 +31,7 @@ npm run build          # outputs dist/
 
 ```
 src/lib/         pure logic, no chrome.* / DOM globals  (gemini, vocab, tutor, speech, recorder, settings)
-src/content/     page side: extract → highlight → tooltip
+src/content/     page side: extract → highlight → tooltip; front pages: headlines → recommendations
 src/background/  service worker: Gemini calls for the content script, per-URL cache
 src/sidepanel/   controller (logic, fully tested) + view (DOM) + main (wiring)
 src/options/     settings form
