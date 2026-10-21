@@ -1,3 +1,4 @@
+import type { Headline, Recommendation } from './recommend.ts';
 import type { ArticleData, VocabEntry } from './types.ts';
 
 /** Content script -> background: register the article and get its vocabulary. */
@@ -17,7 +18,19 @@ export interface TranslateRequest {
 
 export type TranslateResponse = { ok: true; translation: string } | { ok: false; error: string };
 
-export type Request = AnalyzeRequest | TranslateRequest;
+/** Content script -> background: pick the articles worth reading from a front page's headlines. */
+export interface RecommendRequest {
+  type: 'recommend';
+  pageUrl: string;
+  headlines: Headline[];
+  /** Ignore a cached result (the user asked to refresh). */
+  force?: boolean;
+}
+
+export type RecommendResponse = { ok: true; picks: Recommendation[] } | { ok: false; error: string };
+
+export type Request = AnalyzeRequest | TranslateRequest | RecommendRequest;
+export type Response = AnalyzeResponse | TranslateResponse | RecommendResponse;
 
 /** storage.session key under which the background keeps each tab's current article. */
 export const articleKey = (tabId: number) => `article:${tabId}`;

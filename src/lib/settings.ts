@@ -3,6 +3,8 @@ export interface Settings {
   model: string;
   nativeLanguage: string;
   level: string;
+  /** Topics the learner likes, used to recommend articles. */
+  interests: string;
   autoHighlight: boolean;
   speechRate: number;
 }
@@ -12,6 +14,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   model: 'gemini-3.8-flash',
   nativeLanguage: 'Traditional Chinese',
   level: 'B2',
+  interests: '',
   autoHighlight: true,
   speechRate: 0.95,
 });

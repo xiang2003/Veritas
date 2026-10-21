@@ -19,6 +19,7 @@ export function readForm(form: HTMLFormElement): Partial<Settings> {
     model: field('model').value.trim() || undefined,
     nativeLanguage: field('nativeLanguage').value.trim() || undefined,
     level: field('level').value,
+    interests: field('interests').value.trim(),
     autoHighlight: field('autoHighlight').checked,
     speechRate: Number.isFinite(rate) ? Math.min(2, Math.max(0.5, rate)) : undefined,
   } as Partial<Settings>;

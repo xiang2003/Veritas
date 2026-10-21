@@ -1,5 +1,14 @@
 import type { JsonGenerator } from '../lib/gemini.ts';
-import { articleKey, type AnalyzeResponse, type Request, type TranslateResponse } from '../lib/messages.ts';
+import {
+  articleKey,
+  type AnalyzeResponse,
+  type RecommendRequest,
+  type RecommendResponse,
+  type Request,
+  type Response,
+  type TranslateResponse,
+} from '../lib/messages.ts';
+import { recommendHeadlines, type Recommendation } from '../lib/recommend.ts';
 import { createLruCache } from '../lib/lru-cache.ts';
 import { translateParagraph } from '../lib/translate.ts';
 import type { Settings, StorageLike } from '../lib/settings.ts';
@@ -8,6 +17,15 @@ import { analyzeVocabulary } from '../lib/vocab.ts';
 
 const MAX_CACHED_ARTICLES = 100;
 const MAX_CACHED_TRANSLATIONS = 500;
+const MAX_CACHED_PAGES = 30;
+/** Front pages change through the day, so recommendations expire. */
+const RECOMMENDATION_TTL_MS = 30 * 60_000;
+
+interface CachedPicks {
+  at: number;
+  signature: string;
+  picks: Recommendation[];
+}
 
 interface CachedVocab {
   signature: string;
@@ -21,6 +39,7 @@ export interface HandlerDeps {
   cache: StorageLike;
   /** Per-browser-session store shared with the side panel (chrome.storage.session). */
   session: StorageLike;
+  now?: () => number;
 }
 
 /** Short stable key for a paragraph (djb2) – avoids using kilobytes of text as a storage key. */
@@ -30,9 +49,10 @@ export function hashText(text: string): string {
   return `${(h >>> 0).toString(36)}.${text.length}`;
 }
 
-export function createHandlers({ client, getSettings, cache, session }: HandlerDeps) {
+export function createHandlers({ client, getSettings, cache, session, now = Date.now }: HandlerDeps) {
   const vocabCache = createLruCache<CachedVocab>(cache, { prefix: 'vocab:', indexKey: 'vocabIndex', max: MAX_CACHED_ARTICLES });
   const translationCache = createLruCache<string>(cache, { prefix: 'tr:', indexKey: 'trIndex', max: MAX_CACHED_TRANSLATIONS });
+  const picksCache = createLruCache<CachedPicks>(cache, { prefix: 'rec:', indexKey: 'recIndex', max: MAX_CACHED_PAGES });
 
   async function analyze(article: ArticleData, tabId: number | undefined): Promise<AnalyzeResponse> {
     try {
@@ -68,13 +88,30 @@ export function createHandlers({ client, getSettings, cache, session }: HandlerD
     }
   }
 
+  async function recommend({ pageUrl, headlines, force }: RecommendRequest): Promise<RecommendResponse> {
+    try {
+      const settings = await getSettings();
+      const signature = `${settings.level}|${settings.nativeLanguage}|${settings.interests}`;
+      const hit = force ? undefined : await picksCache.get(pageUrl);
+      if (hit && hit.signature === signature && now() - hit.at < RECOMMENDATION_TTL_MS) return { ok: true, picks: hit.picks };
+
+      const picks = await recommendHeadlines(client, headlines, settings);
+      await picksCache.set(pageUrl, { at: now(), signature, picks });
+      return { ok: true, picks };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   return {
-    handle(message: Request, tabId?: number): Promise<AnalyzeResponse | TranslateResponse> | undefined {
+    handle(message: Request, tabId?: number): Promise<Response> | undefined {
       switch (message?.type) {
         case 'analyze':
           return analyze(message.article, tabId);
         case 'translate':
           return translate(message.text, message.title);
+        case 'recommend':
+          return recommend(message);
         default:
           return undefined;
       }

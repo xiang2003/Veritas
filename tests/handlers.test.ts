@@ -109,3 +109,45 @@ test('failed translations are not cached', async () => {
   fail = false;
   assert.deepEqual(await ask(), { ok: true, translation: 'ok' });
 });
+
+const headlines = [
+  { url: 'https://cnn.com/2026/a', title: 'Storm hits the coast' },
+  { url: 'https://cnn.com/2026/b', title: 'Markets fall sharply' },
+];
+
+function recommendSetup() {
+  let calls = 0;
+  let clock = 0;
+  const cache = memory();
+  const settings = { ...DEFAULT_SETTINGS, apiKey: 'k', interests: 'science' };
+  const handlers = createHandlers({
+    client: { generateJson: async () => (calls++, { picks: [{ id: 2, reason: 'r', level: 'B2', topic: 'Economy' }] }) },
+    getSettings: async () => settings,
+    cache,
+    session: memory(),
+    now: () => clock,
+  });
+  const ask = (force = false) => handlers.handle({ type: 'recommend', pageUrl: 'https://cnn.com/', headlines, force });
+  return { ask, calls: () => calls, advance: (ms: number) => (clock += ms), settings };
+}
+
+test('recommendations are returned and cached for the page', async () => {
+  const s = recommendSetup();
+  const res = await s.ask();
+  assert.ok(res && 'picks' in res && res.picks[0]!.title === 'Markets fall sharply');
+  await s.ask();
+  assert.equal(s.calls(), 1);
+});
+
+test('cached recommendations expire after 30 minutes, on refresh, or when interests change', async () => {
+  const s = recommendSetup();
+  await s.ask();
+  s.advance(31 * 60_000);
+  await s.ask();
+  assert.equal(s.calls(), 2);
+  await s.ask(true);
+  assert.equal(s.calls(), 3);
+  s.settings.interests = 'sports';
+  await s.ask();
+  assert.equal(s.calls(), 4);
+});
