@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTutorSystemPrompt, parseTutorTurn, createTutorSession, START_SIGNAL } from '../src/lib/tutor.ts';
+import { buildTutorSystemPrompt, parseTutorTurn, createTutorSession, SPOKEN_PREFIX, START_SIGNAL } from '../src/lib/tutor.ts';
 import type { JsonGenerator, JsonRequest } from '../src/lib/gemini.ts';
 
 const article = { url: 'u', title: 'Storm hits coast', text: 'A powerful storm hit the coast.' };
@@ -58,24 +58,51 @@ test('failed call does not pollute history, so it can be retried', async () => {
 
 const clip = { mimeType: 'audio/webm', data: 'AAA' };
 
-test('parseTutorTurn reads transcript and pronunciation', () => {
-  const turn = parseTutorTurn({ ...good, transcript: ' i goed ', pronunciation: ' storm ' });
-  assert.equal(turn.transcript, 'i goed');
-  assert.equal(turn.pronunciation, 'storm');
+test('the tutor never supplies transcript or pronunciation itself', () => {
+  const turn = parseTutorTurn({ ...good, transcript: 'invented', pronunciation: 'invented' });
+  assert.equal(turn.transcript, '');
+  assert.equal(turn.pronunciation, '');
 });
 
-test('sendAudio attaches the clip, then keeps only the transcript in history', async () => {
+/** Fake client: answers the transcription call and the tutor call differently. */
+function twoStepClient(transcription: object) {
   const sent: JsonRequest[] = [];
   const client: JsonGenerator = {
-    generateJson: async (r) => (sent.push(structuredClone(r)), { ...good, transcript: 'i goed there' }),
+    generateJson: async (r) => {
+      sent.push(structuredClone(r));
+      return r.messages.some((m) => m.audio) ? transcription : good;
+    },
   };
+  return { client, sent };
+}
+
+test('speech is transcribed in a separate call that sees no article or conversation', async () => {
+  const { client, sent } = twoStepClient({ transcript: 'i goed there um yesterday', pronunciation: '"there" 的 th 要咬舌' });
   const s = createTutorSession(client, article, opts);
+  await s.start();
   const turn = await s.sendAudio(clip);
-  assert.equal(turn.transcript, 'i goed there');
-  assert.deepEqual(sent[0]!.messages[0]!.audio, clip);
-  await s.send('next');
-  assert.equal(sent[1]!.messages[0]!.audio, undefined);
-  assert.equal(sent[1]!.messages[0]!.text, 'i goed there');
+
+  const transcription = sent[1]!;
+  assert.deepEqual(transcription.messages.length, 1); // no history
+  assert.deepEqual(transcription.messages[0]!.audio, clip);
+  assert.ok(!transcription.system.includes(article.title)); // no article
+  assert.equal(transcription.temperature, 0);
+
+  const tutor = sent[2]!;
+  assert.ok(tutor.messages.every((m) => !m.audio)); // the tutor only gets text
+  assert.equal(tutor.messages.at(-1)!.text, `${SPOKEN_PREFIX}i goed there um yesterday`);
+
+  assert.equal(turn.transcript, 'i goed there um yesterday');
+  assert.equal(turn.pronunciation, '"there" 的 th 要咬舌');
+  assert.equal(turn.reply, good.reply);
+});
+
+test('no usable speech fails before the tutor is asked, and history stays clean', async () => {
+  const { client, sent } = twoStepClient({ transcript: ' [inaudible] [inaudible] ' });
+  const s = createTutorSession(client, article, opts);
+  await assert.rejects(s.sendAudio(clip), /沒有聽清楚/);
+  assert.equal(sent.length, 1);
+  assert.equal(s.length, 0);
 });
 
 test('typed answers echo the typed text as transcript', async () => {
@@ -84,8 +111,10 @@ test('typed answers echo the typed text as transcript', async () => {
   assert.equal(turn.transcript, 'hello there');
 });
 
-test('system prompt demands a verbatim transcript', () => {
-  assert.match(buildTutorSystemPrompt(article, opts), /word for word/);
+test('the tutor is told how to treat speech transcripts', () => {
+  const p = buildTutorSystemPrompt(article, opts);
+  assert.match(p, /do not list fillers/);
+  assert.match(p, /\[inaudible\]/);
 });
 
 test('a session can resume from saved history and exposes it for saving', async () => {

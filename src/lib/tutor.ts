@@ -1,4 +1,5 @@
 import type { AudioClip, ChatMessage, JsonGenerator } from './gemini.ts';
+import { INAUDIBLE, transcribeSpeech } from './transcribe.ts';
 import type { ArticleData } from './types.ts';
 
 export interface Correction {
@@ -31,10 +32,11 @@ export interface TutorOptions {
 
 /** Sent as the first user message to make the tutor open the discussion. */
 export const START_SIGNAL = '[START]';
-const AUDIO_PROMPT = '(The learner answered by voice – the audio is attached.)';
+/** Marks learner messages that came from speech-to-text rather than typing. */
+export const SPOKEN_PREFIX = '[spoken] ';
 
 export function buildTutorSystemPrompt(article: ArticleData, { level, nativeLanguage }: TutorOptions): string {
-  return `You are a friendly English speaking coach. The learner (CEFR ${level}, native language: ${nativeLanguage}) just read this news article and wants to discuss it out loud. Answers arrive as audio recordings or as typed text.
+  return `You are a friendly English speaking coach. The learner (CEFR ${level}, native language: ${nativeLanguage}) just read this news article and wants to discuss it out loud. Their answers are typed, or are speech transcripts prefixed with ${JSON.stringify(SPOKEN_PREFIX.trim())}.
 
 ARTICLE
 Title: ${article.title}
@@ -46,18 +48,18 @@ RULES
 - Keep "reply" short (1-3 sentences): briefly react to what they said, then ask the next question.
 - If they say they don't know, answer very briefly, or seem stuck, do not move on: ask the same thing more simply, or offer two options to choose from ("Do you think A or B?").
 - "hints": 2-3 short sentence starters or useful phrases (in English, ideally using words from the article) that help answer YOUR new question, e.g. "The article says that…", "I think the main reason is…". Never write the full answer.
-- If the learner's message is ${JSON.stringify(START_SIGNAL)}, greet them in one short sentence and ask the first, easy question about the main event of the article. Leave transcript, corrections, betterAnswer and pronunciation empty.
-- If audio is attached, first write "transcript": exactly what the learner said, word for word, INCLUDING their grammar mistakes and false starts. Never fix or improve it. If the audio is silent or unintelligible, use "" and ask them in "reply" to try again (corrections = []).
+- If the learner's message is ${JSON.stringify(START_SIGNAL)}, greet them in one short sentence and ask the first, easy question about the main event of the article. Leave corrections and betterAnswer empty.
+- Speech transcripts are verbatim: ignore punctuation and capitalisation, and do not list fillers (um, uh), repetitions or false starts as mistakes. ${INAUDIBLE} marks a word that could not be heard – do not guess it or correct it.
 - Analyse the learner's last answer: list real grammar, word-choice or unnatural-phrasing mistakes in "corrections" (max 3, most important first; explanations in ${nativeLanguage}). Do not invent mistakes; use [] if it was fine.
 - "betterAnswer": rewrite what the learner said as a fluent, natural ${level}+ speaker would, reusing their ideas and, where fitting, vocabulary from the article.
-- "pronunciation": for spoken answers only, up to 2 words that were clearly mispronounced, with a short tip in ${nativeLanguage}. Use "" if nothing stood out; never guess.
 - "praise": one short encouraging sentence in English.
 
-Respond ONLY as JSON: {"transcript": string, "reply": string, "corrections": [{"original": string, "corrected": string, "explanation": string}], "betterAnswer": string, "pronunciation": string, "praise": string, "hints": [string]}`;
+Respond ONLY as JSON: {"reply": string, "corrections": [{"original": string, "corrected": string, "explanation": string}], "betterAnswer": string, "praise": string, "hints": [string]}`;
 }
 
 const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 
+/** Parse the tutor's reply. transcript/pronunciation are filled in by the session, never by the tutor. */
 export function parseTutorTurn(raw: unknown): TutorTurn {
   const obj = (raw ?? {}) as Record<string, unknown>;
   const reply = text(obj.reply);
@@ -66,11 +68,11 @@ export function parseTutorTurn(raw: unknown): TutorTurn {
     .map((c: any) => ({ original: text(c?.original), corrected: text(c?.corrected), explanation: text(c?.explanation) }))
     .filter((c) => c.original && c.corrected);
   return {
-    transcript: text(obj.transcript),
+    transcript: '',
     reply,
     corrections,
     betterAnswer: text(obj.betterAnswer),
-    pronunciation: text(obj.pronunciation),
+    pronunciation: '',
     praise: text(obj.praise),
     hints: (Array.isArray(obj.hints) ? obj.hints : []).map(text).filter(Boolean).slice(0, 3),
   };
@@ -86,23 +88,29 @@ export function createTutorSession(
   const history: ChatMessage[] = [...initialHistory];
   const system = buildTutorSystemPrompt(article, options);
 
-  async function say(message: ChatMessage, historyText: (turn: TutorTurn) => string): Promise<TutorTurn> {
-    const messages = [...history, message];
+  async function say(userText: string): Promise<TutorTurn> {
+    const messages: ChatMessage[] = [...history, { role: 'user', text: userText }];
     const turn = parseTutorTurn(await client.generateJson({ system, messages, temperature: 0.7 }));
     // Only commit once the call succeeded, so a failure can simply be retried.
-    // Audio is not kept in history (it is large); the transcript stands in for it.
-    history.push({ role: 'user', text: historyText(turn) }, { role: 'model', text: turn.reply });
+    history.push({ role: 'user', text: userText }, { role: 'model', text: turn.reply });
     return turn;
   }
 
   return {
-    start: () => say({ role: 'user', text: START_SIGNAL }, () => START_SIGNAL),
+    start: () => say(START_SIGNAL),
     async send(userText: string): Promise<TutorTurn> {
-      const turn = await say({ role: 'user', text: userText }, () => userText);
-      return { ...turn, transcript: userText };
+      return { ...(await say(userText)), transcript: userText };
     },
-    sendAudio: (audio: AudioClip) =>
-      say({ role: 'user', text: AUDIO_PROMPT, audio }, (turn) => turn.transcript || '(unintelligible)'),
+    /**
+     * Spoken answer: first a separate, context-free transcription (so the tutor's expectations cannot
+     * bend what was heard), then the tutor reacts to the transcript like to a typed answer. Two requests.
+     */
+    async sendAudio(audio: AudioClip): Promise<TutorTurn> {
+      const { transcript, pronunciation } = await transcribeSpeech(client, audio, options);
+      if (!transcript) throw new Error('沒有聽清楚你說的話，請再說一次。');
+      const turn = await say(SPOKEN_PREFIX + transcript);
+      return { ...turn, transcript, pronunciation };
+    },
     get length() {
       return history.length;
     },
