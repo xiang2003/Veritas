@@ -46,3 +46,15 @@ test('keeps surrounding inline markup intact', () => {
   assert.equal(r.querySelector('a')!.textContent, 'link');
   assert.equal(r.textContent, 'A bold and vivid link.');
 });
+
+test('matches typographic apostrophes and dashes and keys spans consistently', () => {
+  const r = root('<p>They won’t accept the state‑run plan.</p>');
+  assert.equal(highlightTerms(r, [e("won't"), e('state-run')]), 2);
+  const keys = [...r.querySelectorAll<HTMLElement>('.veritas-term')].map((s) => s.dataset.term);
+  assert.deepEqual(keys, ["won't", 'state-run']);
+});
+
+test('a word next to an em dash still matches, but not inside a hyphenated word', () => {
+  const r = root('<p>It was vivid—truly. The state‑run vivid‑looking plan.</p>');
+  assert.equal(highlightTerms(r, [e('vivid')]), 1);
+});

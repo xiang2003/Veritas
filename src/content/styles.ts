@@ -17,8 +17,13 @@ p:hover > .${TOOLS_CLASS}, .${TOOLS_CLASS}:focus-within { opacity: 1; }
 .${PICK_BADGE_CLASS} { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 999px; vertical-align: middle;
   background: #4f46e5; color: #fff; font: 600 11px/18px system-ui, "Noto Sans TC", sans-serif; text-decoration: none; }`;
 
+const STYLE_ID = 'veritas-styles';
+
+/** Add Veritas' page styles once (safe to call repeatedly). */
 export function injectStyles(doc: Document): void {
+  if (doc.getElementById(STYLE_ID)) return;
   const style = doc.createElement('style');
+  style.id = STYLE_ID;
   style.textContent = CSS;
   doc.head.append(style);
 }

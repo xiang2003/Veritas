@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { blockText, createSelectionPopup, isSingleWord, readSelection } from '../src/content/selection.ts';
+import { blockText, createSelectionPopup, isShortTerm, isSingleWord, readSelection } from '../src/content/selection.ts';
+import type { VocabEntry } from '../src/lib/types.ts';
 
 const PARA = 'The minister was accused of spreading a red herring about the budget.';
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -60,10 +61,17 @@ test('blockText drops Veritas buttons from the context', () => {
   assert.equal(blockText(p.doc.getElementById('p')!), PARA);
 });
 
-function popup(p: ReturnType<typeof page>) {
-  const calls = { translate: [] as [string, string][], pronounce: [] as string[], ipa: [] as string[] };
+const card = (term: string): VocabEntry => ({
+  term, lemma: term, pos: 'idiom', ipa: '/rɛd ˈhɛrɪŋ/', definition: 'a distraction', meaning: '轉移注意力的事物',
+  example: 'That clue was a red herring.', usage: '常用於推理、政治',
+});
+
+function popup(p: ReturnType<typeof page>, defineImpl?: (t: string, c: string) => Promise<VocabEntry>) {
+  const calls = { translate: [] as [string, string][], pronounce: [] as string[], ipa: [] as string[], defined: [] as string[] };
   const ui = createSelectionPopup(p.doc, {
     translate: async (text, context) => (calls.translate.push([text, context]), `譯:${text}`),
+    define: defineImpl ?? (async (text) => card(text)),
+    onDefined: (entry) => void calls.defined.push(entry.term),
     pronounce: async (text) => void calls.pronounce.push(text),
     ipaOf: async (word) => (calls.ipa.push(word), '/ˈhɛrɪŋ/'),
   });
@@ -115,4 +123,45 @@ test('clearing the selection or pressing Escape hides the toolbar', async () => 
   await tick();
   p.doc.dispatchEvent(new p.window.KeyboardEvent('keydown', { key: 'Escape' }));
   assert.equal(ui.card.style.display, 'none');
+});
+
+test('isShortTerm allows words and phrases up to four words', () => {
+  assert.ok(isShortTerm('herring'));
+  assert.ok(isShortTerm('red herring'));
+  assert.ok(!isShortTerm('a b c d e'));
+  assert.ok(!isShortTerm('budget, 2026'));
+});
+
+test('解釋 shows a full card for a short selection and reports it for underlining', async () => {
+  const p = page();
+  const { ui, calls, button } = popup(p);
+  p.select('red herring');
+  p.mouseup();
+  await tick();
+  assert.equal(button('def').hidden, false);
+  button('def').click();
+  await tick();
+  const out = ui.card.querySelector('.out')!;
+  assert.match(out.textContent!, /轉移注意力的事物/);
+  assert.match(out.textContent!, /常用於推理/);
+  assert.equal(out.querySelector('a')!.getAttribute('href'), 'https://dictionary.cambridge.org/dictionary/english/red-herring');
+  assert.deepEqual(calls.defined, ['red herring']);
+});
+
+test('解釋 is hidden for long selections and shows errors', async () => {
+  const p = page();
+  const { ui, button } = popup(p, async () => {
+    throw new Error('免費額度已用完');
+  });
+  p.select('accused of spreading a red herring');
+  p.mouseup();
+  await tick();
+  assert.equal(button('def').hidden, true);
+
+  p.select('herring');
+  p.mouseup();
+  await tick();
+  button('def').click();
+  await tick();
+  assert.match(ui.card.querySelector('.out')!.textContent!, /免費額度已用完/);
 });

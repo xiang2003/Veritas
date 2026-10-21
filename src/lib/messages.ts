@@ -40,8 +40,18 @@ export interface PronounceRequest {
 
 export type PronounceResponse = { ok: true; pronunciation: Pronunciation | null } | { ok: false; error: string };
 
-export type Request = AnalyzeRequest | TranslateRequest | RecommendRequest | PronounceRequest;
-export type Response = AnalyzeResponse | TranslateResponse | RecommendResponse | PronounceResponse;
+/** Content script -> background: explain a selected word or phrase as a vocabulary card. */
+export interface DefineRequest {
+  type: 'define';
+  term: string;
+  context: string;
+  title: string;
+}
+
+export type DefineResponse = { ok: true; entry: VocabEntry } | { ok: false; error: string };
+
+export type Request = AnalyzeRequest | TranslateRequest | RecommendRequest | PronounceRequest | DefineRequest;
+export type Response = AnalyzeResponse | TranslateResponse | RecommendResponse | PronounceResponse | DefineResponse;
 
 /** Side panel -> content script: turn Veritas on for this tab. */
 export interface ActivateMessage {

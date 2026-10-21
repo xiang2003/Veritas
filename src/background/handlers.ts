@@ -2,6 +2,8 @@ import type { JsonGenerator } from '../lib/gemini.ts';
 import {
   articleKey,
   type AnalyzeResponse,
+  type DefineRequest,
+  type DefineResponse,
   type PronounceResponse,
   type RecommendRequest,
   type RecommendResponse,
@@ -16,12 +18,15 @@ import { createLruCache } from '../lib/lru-cache.ts';
 import { translateParagraph } from '../lib/translate.ts';
 import type { Settings, StorageLike } from '../lib/settings.ts';
 import type { ArticleData, VocabEntry } from '../lib/types.ts';
-import { analyzeVocabulary } from '../lib/vocab.ts';
+import { analyzeVocabulary, defineTerm, termKey } from '../lib/vocab.ts';
 
 const MAX_CACHED_ARTICLES = 100;
 const MAX_CACHED_TRANSLATIONS = 500;
 const MAX_CACHED_PAGES = 30;
 const MAX_CACHED_PRONUNCIATIONS = 500;
+const MAX_CACHED_DEFINITIONS = 500;
+/** Bump when the vocabulary prompt/validation changes so old cached analyses are redone. */
+const VOCAB_VERSION = 2;
 /** Front pages change through the day, so recommendations expire. */
 const RECOMMENDATION_TTL_MS = 30 * 60_000;
 
@@ -66,6 +71,7 @@ export function createHandlers({
   const vocabCache = createLruCache<CachedVocab>(cache, { prefix: 'vocab:', indexKey: 'vocabIndex', max: MAX_CACHED_ARTICLES });
   const translationCache = createLruCache<string>(cache, { prefix: 'tr:', indexKey: 'trIndex', max: MAX_CACHED_TRANSLATIONS });
   const picksCache = createLruCache<CachedPicks>(cache, { prefix: 'rec:', indexKey: 'recIndex', max: MAX_CACHED_PAGES });
+  const definitionCache = createLruCache<VocabEntry>(cache, { prefix: 'def:', indexKey: 'defIndex', max: MAX_CACHED_DEFINITIONS });
   // Unknown words are cached too ({ found: null }) so they are not looked up again.
   const pronunciationCache = createLruCache<{ found: Pronunciation | null }>(cache, {
     prefix: 'pron:',
@@ -80,7 +86,7 @@ export function createHandlers({
       const settings = await getSettings();
       if (!settings.autoHighlight) return { ok: true, entries: [] };
 
-      const signature = `${settings.level}|${settings.nativeLanguage}`;
+      const signature = `v${VOCAB_VERSION}|${settings.level}|${settings.nativeLanguage}`;
       const hit = await vocabCache.get(article.url);
       if (hit && hit.signature === signature) return { ok: true, entries: hit.entries };
 
@@ -122,6 +128,20 @@ export function createHandlers({
     }
   }
 
+  async function define({ term, context, title }: DefineRequest): Promise<DefineResponse> {
+    try {
+      const settings = await getSettings();
+      const key = `${settings.level}|${settings.nativeLanguage}|${hashText(termKey(term))}|${hashText(context)}`;
+      const cached = await definitionCache.get(key);
+      if (cached) return { ok: true, entry: cached };
+      const entry = await defineTerm(client, term, context, { ...settings, title });
+      await definitionCache.set(key, entry);
+      return { ok: true, entry };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   async function pronounce(word: string): Promise<PronounceResponse> {
     try {
       const key = word.trim().toLowerCase();
@@ -146,6 +166,8 @@ export function createHandlers({
           return recommend(message);
         case 'pronounce':
           return pronounce(message.word);
+        case 'define':
+          return define(message);
         default:
           return undefined;
       }

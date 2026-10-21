@@ -1,6 +1,7 @@
 import type {
   AnalyzeRequest,
   AnalyzeResponse,
+  DefineResponse,
   PronounceResponse,
   RecommendResponse,
   Request,
@@ -20,6 +21,7 @@ import { injectStyles } from './styles.ts';
 import { showToast } from './toast.ts';
 import { createTooltip } from './tooltip.ts';
 import type { VocabEntry } from '../lib/types.ts';
+import { termKey } from '../lib/vocab.ts';
 
 const REAPPLY_DELAY_MS = 500;
 
@@ -92,9 +94,30 @@ async function main(): Promise<void> {
 
   const article = extractArticle(document);
   const title = article?.title ?? document.title;
+
+  // Every term with a card: the AI's article analysis plus anything the reader asked to explain.
+  const vocabulary = new Map<string, VocabEntry>();
+  const addTerms = (list: VocabEntry[]) => list.forEach((e) => vocabulary.set(termKey(e.term), e));
+  injectStyles(document);
+  createTooltip(document, {
+    lookup: (key) => vocabulary.get(key),
+    // Single words: the dictionary form has a human recording; phrases are spoken as written.
+    speak: (entry) => void pronouncer.pronounce(entry.lemma || entry.term, entry.term),
+    fetchIpa: async (entry) => (await pronouncer.find(entry.lemma || entry.term))?.ipa,
+  });
+
   // Selection toolbar works on every activated page, article or not.
   createSelectionPopup(document, {
     translate: (text, context) => translate(text, title, context),
+    define: async (term, context) => {
+      const res = await send<DefineResponse>({ type: 'define', term, context, title });
+      if (!res.ok) throw new Error(res.error);
+      return res.entry;
+    },
+    onDefined: (entry) => {
+      addTerms([entry]);
+      if (article) highlightTerms(article.root, [entry]);
+    },
     // Single words get the dictionary recording; longer selections are read by the browser voice.
     pronounce: (text) => (isSingleWord(text) ? pronouncer.pronounce(text) : tts.speak(text, speechRate)),
     ipaOf: async (word) => (await pronouncer.find(word))?.ipa,
@@ -103,17 +126,15 @@ async function main(): Promise<void> {
   if (!article) return void setUpFrontPage(false);
   const { root, ...data } = article;
 
-  injectStyles(document);
   const paragraphTools = createParagraphTools({
     translate: (text) => translate(text, data.title),
     speak: (text) => tts.speak(text, speechRate),
     stop: () => tts.stop(),
   });
 
-  let entries: VocabEntry[] = [];
   const apply = () => {
     paragraphTools.attach(root);
-    highlightTerms(root, entries);
+    highlightTerms(root, [...vocabulary.values()]);
   };
   apply();
   keepApplied(root, apply);
@@ -123,18 +144,10 @@ async function main(): Promise<void> {
   if (!response.ok) return showToast(document, response.error);
   if (!response.entries.length) return showToast(document, 'AI returned no usable vocabulary for this page.');
 
-  entries = response.entries;
-  const count = highlightTerms(root, entries);
-  console.info(`[Veritas] ${entries.length} terms from AI, ${count} highlighted`, entries.map((e) => e.term));
-  if (!count) showToast(document, `AI found ${entries.length} terms but none matched the page text.`);
-
-  const byTerm = new Map(entries.map((e) => [e.term.toLowerCase(), e]));
-  createTooltip(document, {
-    lookup: (term) => byTerm.get(term),
-    // Single words: the dictionary form has a human recording; phrases are spoken as written.
-    speak: (entry) => void pronouncer.pronounce(entry.lemma || entry.term, entry.term),
-    fetchIpa: async (entry) => (await pronouncer.find(entry.lemma || entry.term))?.ipa,
-  });
+  addTerms(response.entries);
+  const count = highlightTerms(root, response.entries);
+  console.info(`[Veritas] ${response.entries.length} terms from AI, ${count} highlighted`, response.entries.map((e) => e.term));
+  if (!count) showToast(document, `AI found ${response.entries.length} terms but none matched the page text.`);
 }
 
 const activation = createActivation(() => void main().catch((error) => console.error('[Veritas]', error)));

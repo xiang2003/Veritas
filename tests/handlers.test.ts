@@ -53,7 +53,7 @@ test('changing level invalidates the cache', async () => {
     getSettings: async () => ({ ...DEFAULT_SETTINGS, apiKey: 'k', level: 'C2' }),
   });
   await h2.handle({ type: 'analyze', article }, 1);
-  assert.equal((s.cache.data[`vocab:${article.url}`] as { signature: string }).signature, 'C2|Traditional Chinese');
+  assert.equal((s.cache.data[`vocab:${article.url}`] as { signature: string }).signature, 'v2|C2|Traditional Chinese');
 });
 
 test('autoHighlight off still registers the article but skips the AI call', async () => {
@@ -172,4 +172,22 @@ test('pronounce looks words up once and caches unknown words too', async () => {
   assert.deepEqual(await ask('zzz'), { ok: true, pronunciation: null });
   await ask('zzz');
   assert.equal(calls, 2);
+});
+
+test('define explains a selected term once per term and passage', async () => {
+  let calls = 0;
+  const s = setup({}, async () => (calls++, { lemma: 'beleaguer', meaning: '處境艱難的', pos: 'adjective' }));
+  const ask = (context: string) => s.handlers.handle({ type: 'define', term: 'beleaguered', context, title: 'T' });
+  const res = await ask('The beleaguered mayor resigned.');
+  assert.ok(res && 'entry' in res && res.entry.term === 'beleaguered' && res.entry.meaning === '處境艱難的');
+  await ask('The beleaguered mayor resigned.');
+  assert.equal(calls, 1);
+  await ask('A beleaguered city held out.');
+  assert.equal(calls, 2);
+});
+
+test('an empty explanation becomes an error response', async () => {
+  const s = setup({}, async () => ({ meaning: '' }));
+  const res = await s.handlers.handle({ type: 'define', term: 'x', context: 'x', title: 'T' });
+  assert.ok(res && !res.ok);
 });
