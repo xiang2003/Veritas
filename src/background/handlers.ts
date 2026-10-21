@@ -7,6 +7,7 @@ import {
   type RecommendResponse,
   type Request,
   type Response,
+  type TranslateRequest,
   type TranslateResponse,
 } from '../lib/messages.ts';
 import { recommendHeadlines, type Recommendation } from '../lib/recommend.ts';
@@ -91,14 +92,14 @@ export function createHandlers({
     }
   }
 
-  async function translate(text: string, title: string): Promise<TranslateResponse> {
+  async function translate({ text, title, context }: TranslateRequest): Promise<TranslateResponse> {
     try {
       const { nativeLanguage } = await getSettings();
-      const key = `${nativeLanguage}|${hashText(text)}`;
+      const key = `${nativeLanguage}|${hashText(text)}${context ? `|${hashText(context)}` : ''}`;
       const cached = await translationCache.get(key);
       if (cached) return { ok: true, translation: cached };
 
-      const translation = await translateParagraph(client, text, { nativeLanguage, title });
+      const translation = await translateParagraph(client, text, { nativeLanguage, title, context });
       await translationCache.set(key, translation);
       return { ok: true, translation };
     } catch (error) {
@@ -140,7 +141,7 @@ export function createHandlers({
         case 'analyze':
           return analyze(message.article, tabId);
         case 'translate':
-          return translate(message.text, message.title);
+          return translate(message);
         case 'recommend':
           return recommend(message);
         case 'pronounce':

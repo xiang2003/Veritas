@@ -15,6 +15,8 @@ export interface TranslateRequest {
   type: 'translate';
   text: string;
   title: string;
+  /** Paragraph around a selection (selection translation only). */
+  context?: string;
 }
 
 export type TranslateResponse = { ok: true; translation: string } | { ok: false; error: string };

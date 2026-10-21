@@ -43,3 +43,29 @@ test('background handles translate requests and turns failures into error respon
   }).handle({ type: 'translate', text: 'Hello', title: 'T' });
   assert.deepEqual(bad, { ok: false, error: 'quota' });
 });
+
+test('selection prompt includes the surrounding passage and asks for the selection only', () => {
+  const p = buildTranslateSystemPrompt({ ...opts, context: 'He told a red herring.' });
+  assert.match(p, /He told a red herring\./);
+  assert.match(p, /ONLY the selected text/);
+});
+
+test('the same selection in different passages is translated separately', async () => {
+  let calls = 0;
+  const data: Record<string, unknown> = {};
+  const store = {
+    get: async (keys: string[]) => Object.fromEntries(keys.filter((k) => k in data).map((k) => [k, data[k]])),
+    set: async (items: Record<string, unknown>) => void Object.assign(data, items),
+  };
+  const handlers = createHandlers({
+    client: { generateJson: async () => (calls++, { translation: 'x' }) },
+    getSettings: async () => ({ ...DEFAULT_SETTINGS, apiKey: 'k' }),
+    cache: store,
+    session: mem(),
+  });
+  const ask = (context?: string) => handlers.handle({ type: 'translate', text: 'bank', title: 'T', context });
+  await ask('river bank');
+  await ask('central bank');
+  await ask('central bank');
+  assert.equal(calls, 2);
+});

@@ -15,6 +15,7 @@ import { highlightTerms } from './highlighter.ts';
 import { createParagraphTools } from './paragraphs.ts';
 import { createPronouncer, playAudioUrl } from './pronounce.ts';
 import { createRecommendPanel, markPickedLinks } from './recommend-ui.ts';
+import { createSelectionPopup, isSingleWord } from './selection.ts';
 import { injectStyles } from './styles.ts';
 import { showToast } from './toast.ts';
 import { createTooltip } from './tooltip.ts';
@@ -50,23 +51,43 @@ function setUpFrontPage(): void {
   });
 }
 
-async function main(): Promise<void> {
-  const article = extractArticle(document);
-  if (!article) return setUpFrontPage();
-  const { root, ...data } = article;
+async function translate(text: string, title: string, context?: string): Promise<string> {
+  const res = await send<TranslateResponse>({ type: 'translate', text, title, context });
+  if (!res.ok) throw new Error(res.error);
+  return res.translation;
+}
 
-  injectStyles(document);
+async function main(): Promise<void> {
   const { speechRate } = await createSettings(chrome.storage.local).get();
   const tts = createTts({
     synth: speechSynthesis,
     createUtterance: (text) => new SpeechSynthesisUtterance(text),
   });
-  const paragraphTools = createParagraphTools({
-    translate: async (text) => {
-      const res = await send<TranslateResponse>({ type: 'translate', text, title: data.title });
-      if (!res.ok) throw new Error(res.error);
-      return res.translation;
+  const pronouncer = createPronouncer({
+    lookup: async (word) => {
+      const res = await send<PronounceResponse>({ type: 'pronounce', word });
+      return res.ok ? res.pronunciation : null;
     },
+    playAudio: (url) => playAudioUrl(url),
+    speak: (text) => tts.speak(text, speechRate),
+  });
+
+  const article = extractArticle(document);
+  const title = article?.title ?? document.title;
+  // Selection toolbar works on every activated page, article or not.
+  createSelectionPopup(document, {
+    translate: (text, context) => translate(text, title, context),
+    // Single words get the dictionary recording; longer selections are read by the browser voice.
+    pronounce: (text) => (isSingleWord(text) ? pronouncer.pronounce(text) : tts.speak(text, speechRate)),
+    ipaOf: async (word) => (await pronouncer.find(word))?.ipa,
+  });
+
+  if (!article) return setUpFrontPage();
+  const { root, ...data } = article;
+
+  injectStyles(document);
+  const paragraphTools = createParagraphTools({
+    translate: (text) => translate(text, data.title),
     speak: (text) => tts.speak(text, speechRate),
     stop: () => tts.stop(),
   });
@@ -90,14 +111,6 @@ async function main(): Promise<void> {
   if (!count) showToast(document, `AI found ${entries.length} terms but none matched the page text.`);
 
   const byTerm = new Map(entries.map((e) => [e.term.toLowerCase(), e]));
-  const pronouncer = createPronouncer({
-    lookup: async (word) => {
-      const res = await send<PronounceResponse>({ type: 'pronounce', word });
-      return res.ok ? res.pronunciation : null;
-    },
-    playAudio: (url) => playAudioUrl(url),
-    speak: (text) => tts.speak(text, speechRate),
-  });
   createTooltip(document, {
     lookup: (term) => byTerm.get(term),
     // Single words: the dictionary form has a human recording; phrases are spoken as written.
