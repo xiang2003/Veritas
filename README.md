@@ -2,7 +2,7 @@
 
 Chrome extension (Manifest V3, TypeScript) for reading English news and practising speaking.
 
-- **Vocabulary underlining** – on CNN, BBC, NYT, Guardian, Reuters, AP, WaPo, NPR, CNBC and Time, hard words and phrases are underlined. Hover to see IPA, meaning (in your language), English definition, example and usage; click 🔊 to hear it.
+- **Vocabulary underlining** – on CNN, BBC, NYT, Guardian, Reuters, AP, WaPo, NPR, CNBC and Time, hard words and phrases are underlined. Hover to see IPA, meaning (in your language), English definition, example, usage and a link to the Cambridge Dictionary entry; click 🔊 to hear a human recording from the free [Free Dictionary API](https://dictionaryapi.dev) (falls back to the browser voice for phrases or when the site blocks audio). The dictionary's IPA replaces the AI's estimate when available.
 - **Per-paragraph tools** – every paragraph gets 🔊 (read aloud, click again to stop) and 譯 buttons on its right; click 譯 to see the translation below the paragraph (cached, click again to hide).
 - **What to read** – on a news front or section page, click **✨ 推薦文章** (bottom right): Gemini picks the 5 stories most worth reading for your level and interests (set in Options), with a reason, estimated level and topic, and marks them ⭐ on the page. One request per click, cached for 30 minutes.
 - **Speaking tutor** – click the toolbar icon to open the side panel. Gemini has already read the article; talk about it by voice or typing (your recording is transcribed by Gemini, which also comments on pronunciation). It answers aloud (text-to-speech), lists your mistakes with explanations, and shows a better way to say what you meant.

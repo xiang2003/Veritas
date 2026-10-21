@@ -35,11 +35,11 @@ test('renderEntry shows fields as text, never as HTML', () => {
   assert.match(box.textContent!, /<img src=x/);
 });
 
-test('speak button reports the term', () => {
+test('speak button reports the entry', () => {
   const doc = newDoc();
   let spoken = '';
   const box = doc.createElement('div');
-  box.append(renderEntry(doc, entry, (t) => (spoken = t)));
+  box.append(renderEntry(doc, entry, (e) => (spoken = e.term)));
   box.querySelector('button')!.click();
   assert.equal(spoken, 'eloquent');
 });
@@ -56,4 +56,23 @@ test('hovering a term shows its card; unknown terms show nothing', () => {
   known!.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }));
   assert.equal(tip.card.style.display, 'block');
   assert.match(tip.card.textContent!, /雄辯的/);
+});
+
+test('card links to the Cambridge entry of the dictionary form', () => {
+  const doc = newDoc();
+  const box = doc.createElement('div');
+  box.append(renderEntry(doc, { ...entry, term: 'red herrings', lemma: 'red herring' }, () => {}));
+  const link = box.querySelector('a')!;
+  assert.equal(link.href, 'https://dictionary.cambridge.org/dictionary/english/red-herring');
+  assert.equal(link.target, '_blank');
+});
+
+test('dictionary IPA replaces the AI estimate when it arrives for the card still shown', async () => {
+  const { window } = new JSDOM('<body><span class="veritas-term" data-term="eloquent">Eloquent</span></body>');
+  const document = window.document as unknown as Document;
+  const tip = createTooltip(document, { lookup: () => entry, speak() {}, fetchIpa: async () => '/ˈɛləkwənt/' });
+  document.querySelector('.veritas-term')!.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }));
+  assert.equal(tip.card.querySelector('.ipa')!.textContent, '/x/');
+  await new Promise((r) => setImmediate(r));
+  assert.equal(tip.card.querySelector('.ipa')!.textContent, '/ˈɛləkwənt/');
 });

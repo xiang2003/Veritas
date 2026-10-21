@@ -1,3 +1,4 @@
+import type { Pronunciation } from './dictionary.ts';
 import type { Headline, Recommendation } from './recommend.ts';
 import type { ArticleData, VocabEntry } from './types.ts';
 
@@ -29,8 +30,16 @@ export interface RecommendRequest {
 
 export type RecommendResponse = { ok: true; picks: Recommendation[] } | { ok: false; error: string };
 
-export type Request = AnalyzeRequest | TranslateRequest | RecommendRequest;
-export type Response = AnalyzeResponse | TranslateResponse | RecommendResponse;
+/** Content script -> background: dictionary IPA and human recording for a word. */
+export interface PronounceRequest {
+  type: 'pronounce';
+  word: string;
+}
+
+export type PronounceResponse = { ok: true; pronunciation: Pronunciation | null } | { ok: false; error: string };
+
+export type Request = AnalyzeRequest | TranslateRequest | RecommendRequest | PronounceRequest;
+export type Response = AnalyzeResponse | TranslateResponse | RecommendResponse | PronounceResponse;
 
 /** storage.session key under which the background keeps each tab's current article. */
 export const articleKey = (tabId: number) => `article:${tabId}`;

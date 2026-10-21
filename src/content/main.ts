@@ -1,10 +1,18 @@
-import type { AnalyzeRequest, AnalyzeResponse, RecommendResponse, Request, TranslateResponse } from '../lib/messages.ts';
+import type {
+  AnalyzeRequest,
+  AnalyzeResponse,
+  PronounceResponse,
+  RecommendResponse,
+  Request,
+  TranslateResponse,
+} from '../lib/messages.ts';
 import { createSettings } from '../lib/settings.ts';
 import { createTts } from '../lib/speech.ts';
 import { extractArticle } from './extract.ts';
 import { collectHeadlines } from './headlines.ts';
 import { highlightTerms } from './highlighter.ts';
 import { createParagraphTools } from './paragraphs.ts';
+import { createPronouncer, playAudioUrl } from './pronounce.ts';
 import { createRecommendPanel, markPickedLinks } from './recommend-ui.ts';
 import { injectStyles } from './styles.ts';
 import { showToast } from './toast.ts';
@@ -81,9 +89,19 @@ async function main(): Promise<void> {
   if (!count) showToast(document, `AI found ${entries.length} terms but none matched the page text.`);
 
   const byTerm = new Map(entries.map((e) => [e.term.toLowerCase(), e]));
+  const pronouncer = createPronouncer({
+    lookup: async (word) => {
+      const res = await send<PronounceResponse>({ type: 'pronounce', word });
+      return res.ok ? res.pronunciation : null;
+    },
+    playAudio: (url) => playAudioUrl(url),
+    speak: (text) => tts.speak(text, speechRate),
+  });
   createTooltip(document, {
     lookup: (term) => byTerm.get(term),
-    speak: (text) => void tts.speak(text, speechRate),
+    // Single words: the dictionary form has a human recording; phrases are spoken as written.
+    speak: (entry) => void pronouncer.pronounce(entry.lemma || entry.term, entry.term),
+    fetchIpa: async (entry) => (await pronouncer.find(entry.lemma || entry.term))?.ipa,
   });
 }
 

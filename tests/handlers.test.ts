@@ -151,3 +151,25 @@ test('cached recommendations expire after 30 minutes, on refresh, or when intere
   await s.ask();
   assert.equal(s.calls(), 4);
 });
+
+test('pronounce looks words up once and caches unknown words too', async () => {
+  let calls = 0;
+  const handlers = createHandlers({
+    client: { generateJson: async () => ({}) },
+    getSettings: async () => ({ ...DEFAULT_SETTINGS, apiKey: 'k' }),
+    cache: memory(),
+    session: memory(),
+    fetch: async (url) => {
+      calls++;
+      return String(url).endsWith('/zzz')
+        ? ({ ok: false, status: 404 } as Response)
+        : ({ ok: true, status: 200, json: async () => [{ phonetics: [{ text: '/a/', audio: 'https://x/a-us.mp3' }] }] } as Response);
+    },
+  });
+  const ask = (word: string) => handlers.handle({ type: 'pronounce', word });
+  assert.deepEqual(await ask('Apple'), { ok: true, pronunciation: { ipa: '/a/', audioUrl: 'https://x/a-us.mp3' } });
+  await ask('apple');
+  assert.deepEqual(await ask('zzz'), { ok: true, pronunciation: null });
+  await ask('zzz');
+  assert.equal(calls, 2);
+});
