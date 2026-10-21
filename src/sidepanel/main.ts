@@ -47,8 +47,14 @@ const controller = createController({
 });
 replay = (text) => void controller.replay(text);
 
+/**
+ * Each browser window has its own side panel, so the panel follows the active tab of *its* window only.
+ * (Following the last-focused window made the conversation vanish when the user switched windows.)
+ */
+const windowIdPromise = chrome.windows.getCurrent().then((w) => w.id);
+
 async function loadActiveArticle(): Promise<ArticleData | null> {
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const [tab] = await chrome.tabs.query({ active: true, windowId: await windowIdPromise });
   if (tab?.id === undefined) return null;
   const key = articleKey(tab.id);
   return ((await chrome.storage.session.get(key))[key] as ArticleData | undefined) ?? null;
@@ -74,7 +80,13 @@ $('#send-form').addEventListener('submit', (event) => {
 });
 $('#open-options').addEventListener('click', () => chrome.runtime.openOptionsPage());
 
-chrome.tabs.onActivated.addListener(() => void refresh());
-chrome.tabs.onUpdated.addListener((_id, change) => change.status === 'complete' && void refresh());
+const inThisWindow = async (windowId: number) => windowId === (await windowIdPromise);
+
+chrome.tabs.onActivated.addListener(async ({ windowId }) => {
+  if (await inThisWindow(windowId)) void refresh();
+});
+chrome.tabs.onUpdated.addListener(async (_id, change, tab) => {
+  if (change.status === 'complete' && tab.active && (await inThisWindow(tab.windowId))) void refresh();
+});
 chrome.storage.session.onChanged.addListener(() => void refresh());
 void refresh();
