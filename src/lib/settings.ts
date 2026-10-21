@@ -6,6 +6,8 @@ export interface Settings {
   /** Topics the learner likes, used to recommend articles. */
   interests: string;
   autoHighlight: boolean;
+  /** Show and load article recommendations on news front pages without clicking the toolbar icon. */
+  autoRecommend: boolean;
   speechRate: number;
 }
 
@@ -16,6 +18,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   level: 'B2',
   interests: '',
   autoHighlight: true,
+  autoRecommend: true,
   speechRate: 0.95,
 });
 

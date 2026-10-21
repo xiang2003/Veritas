@@ -2,12 +2,12 @@
 
 Chrome extension (Manifest V3, TypeScript) for reading English news and practising speaking.
 
-Veritas stays off until you click its toolbar icon: that opens the tutor side panel and turns on the features below for the tab you are viewing (and any tab you switch to while the panel is open). Pages you open with the panel closed are left untouched and cost no API quota.
+Veritas stays off until you click its toolbar icon: that opens the tutor side panel and turns on the features below for the tab you are viewing (and any tab you switch to while the panel is open). Pages you open with the panel closed are left untouched and cost no API quota – except news front pages, which show article recommendations straight away (can be turned off in Options).
 
 - **Vocabulary underlining** – on CNN, BBC, NYT, Guardian, Reuters, AP, WaPo, NPR, CNBC and Time, hard words and phrases are underlined. Hover to see IPA, meaning (in your language), English definition, example, usage and a link to the Cambridge Dictionary entry; click 🔊 to hear a human recording from the free [Free Dictionary API](https://dictionaryapi.dev) (falls back to the browser voice for phrases or when the site blocks audio). The dictionary's IPA replaces the AI's estimate when available.
 - **Per-paragraph tools** – every paragraph gets 🔊 (read aloud, click again to stop) and 譯 buttons on its right; click 譯 to see the translation below the paragraph (cached, click again to hide).
 - **Selection toolbar** – select any English text on an activated page to get 🔊 (human recording for single words, browser voice otherwise) and 譯 (translated in the sense used in its paragraph; one request, cached). Single words also show their dictionary IPA.
-- **What to read** – on a news front or section page, click **✨ 推薦文章** (bottom right): Gemini picks the 5 stories most worth reading for your level and interests (set in Options), with a reason, estimated level and topic, and marks them ⭐ on the page. One request per click, cached for 30 minutes.
+- **What to read** – on a news front or section page, a panel opens bottom right (or click **✨ 推薦文章** if auto-recommend is off): Gemini picks the 5 stories most worth reading for your level and interests (set in Options), with a reason, estimated level and topic, and marks them ⭐ on the page. One request per click, cached for 30 minutes.
 - **Speaking tutor** – click the toolbar icon to open the side panel. Gemini has already read the article; talk about it by voice or typing (your recording is transcribed by Gemini, which also comments on pronunciation). It answers aloud (text-to-speech), lists your mistakes with explanations, and shows a better way to say what you meant.
 
 ## Setup

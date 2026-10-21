@@ -56,10 +56,12 @@ export function markPickedLinks(doc: Document, picks: Recommendation[]): number 
 export interface RecommendPanelDeps {
   /** Fetch picks; `force` skips the cache. */
   load: (force: boolean) => Promise<Recommendation[]>;
+  /** Open the panel and load the picks right away instead of waiting for a click. */
+  autoOpen?: boolean;
 }
 
 /** Floating "✨ 推薦文章" button that opens a list of recommended articles. */
-export function createRecommendPanel(doc: Document, { load }: RecommendPanelDeps) {
+export function createRecommendPanel(doc: Document, { load, autoOpen = false }: RecommendPanelDeps) {
   const host = el(doc, 'div', UI_CLASS);
   const shadow = host.attachShadow({ mode: 'open' });
   const style = el(doc, 'style');
@@ -120,6 +122,11 @@ export function createRecommendPanel(doc: Document, { load }: RecommendPanelDeps
   });
   refresh.addEventListener('click', () => void fetchPicks(true));
   close.addEventListener('click', () => (panel.hidden = true));
+
+  if (autoOpen) {
+    panel.hidden = false;
+    void fetchPicks(false);
+  }
 
   return { panel, fab, destroy: () => host.remove() };
 }

@@ -81,3 +81,17 @@ test('headline collection ignores the badge text added by Veritas', () => {
   markPickedLinks(doc, [pick(1)]);
   assert.equal(collectHeadlines(doc)[0]!.title, 'Headline number 1 about something');
 });
+
+test('autoOpen shows the panel and loads picks without a click', async () => {
+  const { doc } = setup();
+  let calls = 0;
+  const ui = createRecommendPanel(doc, { load: async () => (calls++, [pick(1)]), autoOpen: true });
+  assert.equal(ui.panel.hidden, false);
+  await tick();
+  assert.equal(calls, 1);
+  assert.equal(ui.panel.querySelectorAll('a').length, 1);
+  ui.fab.click(); // collapse to the button
+  assert.equal(ui.panel.hidden, true);
+  ui.fab.click(); // reopen without another request
+  assert.equal(calls, 1);
+});

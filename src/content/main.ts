@@ -35,12 +35,21 @@ function keepApplied(root: Element, apply: () => void): void {
 }
 
 const MIN_HEADLINES_FOR_FRONT_PAGE = 8;
+const LATE_HEADLINES_RETRY_MS = 2000;
+let frontPageReady = false;
 
-/** Front / section pages: offer AI recommendations of which stories to read. Costs nothing until clicked. */
-function setUpFrontPage(): void {
-  if (collectHeadlines(document).length < MIN_HEADLINES_FOR_FRONT_PAGE) return;
+/**
+ * Front / section pages: AI recommendations of which stories to read.
+ * With `autoOpen` the picks load immediately (one request, cached 30 min per page); otherwise on click.
+ * @returns whether the page qualifies as a front page
+ */
+function setUpFrontPage(autoOpen: boolean): boolean {
+  if (frontPageReady) return true;
+  if (collectHeadlines(document).length < MIN_HEADLINES_FOR_FRONT_PAGE) return false;
+  frontPageReady = true;
   injectStyles(document);
   createRecommendPanel(document, {
+    autoOpen,
     load: async (force) => {
       const pageUrl = location.href.split('#')[0]!;
       const res = await send<RecommendResponse>({ type: 'recommend', pageUrl, headlines: collectHeadlines(document), force });
@@ -49,6 +58,15 @@ function setUpFrontPage(): void {
       return res.picks;
     },
   });
+  return true;
+}
+
+/** Recommendations are the one feature that runs without activation (if enabled in Options). */
+async function autoRecommend(): Promise<void> {
+  const { autoRecommend } = await createSettings(chrome.storage.local).get();
+  if (!autoRecommend || extractArticle(document)) return;
+  // Some front pages render their story lists after load; look once more a little later.
+  if (!setUpFrontPage(true)) setTimeout(() => setUpFrontPage(true), LATE_HEADLINES_RETRY_MS);
 }
 
 async function translate(text: string, title: string, context?: string): Promise<string> {
@@ -82,7 +100,7 @@ async function main(): Promise<void> {
     ipaOf: async (word) => (await pronouncer.find(word))?.ipa,
   });
 
-  if (!article) return setUpFrontPage();
+  if (!article) return void setUpFrontPage(false);
   const { root, ...data } = article;
 
   injectStyles(document);
@@ -124,3 +142,4 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (activation.handle(message)) sendResponse({ ok: true });
   return false;
 });
+void autoRecommend().catch((error) => console.error('[Veritas]', error));
