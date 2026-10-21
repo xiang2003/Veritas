@@ -48,6 +48,8 @@ export interface ControllerDeps {
   tts: TtsLike;
   view: View;
   getRate: () => number;
+  /** Whether the tutor should open a new conversation by itself (e.g. only when an API key is set). */
+  autoStart?: () => boolean;
 }
 
 interface ActiveConversation {
@@ -58,7 +60,7 @@ interface ActiveConversation {
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function createController({ createSession, store, recorder, tts, view, getRate }: ControllerDeps) {
+export function createController({ createSession, store, recorder, tts, view, getRate, autoStart = () => false }: ControllerDeps) {
   let active: ActiveConversation | undefined;
   let phase: Phase = 'no-article';
   let loadId = 0; // guards against overlapping setArticle() calls while a saved conversation loads
@@ -121,6 +123,8 @@ export function createController({ createSession, store, recorder, tts, view, ge
       active = { url: article.url, session: createSession(article, saved?.history ?? []), items: saved?.items ?? [] };
       active.items.forEach(show);
       setPhase('ready');
+      // A fresh conversation starts with the tutor's first guiding question, not with the learner.
+      if (!active.items.length && autoStart()) await converse((s) => s.start());
     },
 
     start: () => converse((s) => s.start()),

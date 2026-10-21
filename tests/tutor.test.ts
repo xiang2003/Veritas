@@ -102,3 +102,16 @@ test('a session can resume from saved history and exposes it for saving', async 
   s.history.pop(); // the returned copy must not mutate the session
   assert.equal(s.history.length, 4);
 });
+
+test('the tutor leads with concrete, guided questions and gives hints', () => {
+  const p = buildTutorSystemPrompt(article, opts);
+  assert.match(p, /You lead the conversation/);
+  assert.match(p, /two options/);
+  assert.match(p, /"hints"/);
+});
+
+test('parseTutorTurn keeps at most three non-empty hints', () => {
+  const turn = parseTutorTurn({ ...good, hints: [' The article says that… ', '', 3, 'I think…', 'Maybe…', 'Also…'] });
+  assert.deepEqual(turn.hints, ['The article says that…', 'I think…', 'Maybe…']);
+  assert.deepEqual(parseTutorTurn(good).hints, []);
+});

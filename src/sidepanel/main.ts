@@ -44,6 +44,7 @@ const controller = createController({
   tts: createTts({ synth: speechSynthesis, createUtterance: (t) => new SpeechSynthesisUtterance(t) }),
   view,
   getRate: () => rate,
+  autoStart: () => Boolean(latestSettings.apiKey),
 });
 replay = (text) => void controller.replay(text);
 

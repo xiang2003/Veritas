@@ -90,6 +90,23 @@ export function createView(doc: Document, parts: ViewParts, onReplay: (text: str
       const bubble = el(doc, 'div', 'bubble tutor');
       bubble.append(el(doc, 'span', '', turn.reply), speakButton(turn.reply));
       parts.log.append(bubble);
+      // Older saved conversations have no hints.
+      const hints = turn.hints ?? [];
+      if (hints.length) {
+        const box = el(doc, 'div', 'hints');
+        box.append(el(doc, 'span', 'hints-label', '💡 可以這樣開頭'));
+        for (const hint of hints) {
+          const chip = el(doc, 'button', 'hint', hint);
+          chip.type = 'button';
+          chip.title = '填入輸入框';
+          chip.addEventListener('click', () => {
+            parts.input.value = hint.replace(/(…|\.\.\.)$/, '').trimEnd() + ' ';
+            parts.input.focus();
+          });
+          box.append(chip);
+        }
+        parts.log.append(box);
+      }
       scrollDown();
     },
     showError: (message) => (parts.error.textContent = message),

@@ -15,7 +15,7 @@ const article = { url: 'u', title: 'Title', text: 'text' };
 const other = { url: 'v', title: 'Other', text: 'text' };
 const clip = { mimeType: 'audio/webm', data: 'AAA' };
 const turn = (reply: string, transcript = ''): TutorTurn => ({
-  transcript, reply, corrections: [], betterAnswer: '', pronunciation: '', praise: '',
+  transcript, reply, corrections: [], betterAnswer: '', pronunciation: '', praise: '', hints: [],
 });
 const tick = () => new Promise((r) => setImmediate(r));
 
@@ -204,4 +204,34 @@ test('a failing store does not break the conversation', async () => {
   await controller.setArticle(article);
   await controller.submitText('q');
   assert.deepEqual(s.log, ['tutor:ok']);
+});
+
+test('a new article opens with the tutor question when autoStart is on; saved ones do not restart', async () => {
+  const saved = new Map<string, SavedConversation>();
+  let starts = 0;
+  const controller = createController({
+    createSession: () => ({
+      history: [],
+      start: async () => (starts++, turn('What happened in the article?')),
+      send: async (t) => turn('ok', t),
+      sendAudio: async () => turn('x'),
+    }),
+    store: { load: async (url) => saved.get(url) ?? null, save: async (url, c) => void saved.set(url, c) },
+    recorder: { start() {}, stop() {} },
+    tts: { speak: async () => {}, stop() {} },
+    view: { setPhase() {}, setArticleTitle() {}, clearConversation() {}, addUserMessage() {}, addTutorTurn() {}, showError() {} },
+    getRate: () => 1,
+    autoStart: () => true,
+  });
+  await controller.setArticle(article);
+  assert.equal(starts, 1);
+  await controller.setArticle(other);
+  await controller.setArticle(article); // restored from storage
+  assert.equal(starts, 2); // only "other" started; "article" kept its conversation
+});
+
+test('autoStart off (e.g. no API key) waits for the start button', async () => {
+  const s = setup();
+  await s.controller.setArticle(article);
+  assert.ok(!s.log.some((l) => l.startsWith('tutor:')));
 });

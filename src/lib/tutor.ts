@@ -20,6 +20,8 @@ export interface TutorTurn {
   pronunciation: string;
   /** One short encouraging remark. */
   praise: string;
+  /** Up to 3 sentence starters / useful phrases that help the learner answer the new question. */
+  hints: string[];
 }
 
 export interface TutorOptions {
@@ -39,15 +41,19 @@ Title: ${article.title}
 ${article.text}
 
 RULES
-- Keep "reply" short (2-3 sentences), conversational, and end with one question that moves the discussion forward. Mix comprehension, opinion and "what would you do" questions.
-- If the learner's message is ${JSON.stringify(START_SIGNAL)}, open by briefly greeting them and asking the first question about the article. Leave transcript, corrections, betterAnswer and pronunciation empty.
+- You lead the conversation. The learner finds open-ended prompts like "What do you think?" hard to start, so every "reply" must end with exactly ONE concrete, specific question that is easy to begin answering.
+- Guide them step by step: start with simple questions whose answer is in the article (who, what happened, where, why), then move to cause and effect, then to their opinion, their own country or experience, and "what would you do" questions. Only go deeper once they answer the easier ones well.
+- Keep "reply" short (1-3 sentences): briefly react to what they said, then ask the next question.
+- If they say they don't know, answer very briefly, or seem stuck, do not move on: ask the same thing more simply, or offer two options to choose from ("Do you think A or B?").
+- "hints": 2-3 short sentence starters or useful phrases (in English, ideally using words from the article) that help answer YOUR new question, e.g. "The article says that…", "I think the main reason is…". Never write the full answer.
+- If the learner's message is ${JSON.stringify(START_SIGNAL)}, greet them in one short sentence and ask the first, easy question about the main event of the article. Leave transcript, corrections, betterAnswer and pronunciation empty.
 - If audio is attached, first write "transcript": exactly what the learner said, word for word, INCLUDING their grammar mistakes and false starts. Never fix or improve it. If the audio is silent or unintelligible, use "" and ask them in "reply" to try again (corrections = []).
 - Analyse the learner's last answer: list real grammar, word-choice or unnatural-phrasing mistakes in "corrections" (max 3, most important first; explanations in ${nativeLanguage}). Do not invent mistakes; use [] if it was fine.
 - "betterAnswer": rewrite what the learner said as a fluent, natural ${level}+ speaker would, reusing their ideas and, where fitting, vocabulary from the article.
 - "pronunciation": for spoken answers only, up to 2 words that were clearly mispronounced, with a short tip in ${nativeLanguage}. Use "" if nothing stood out; never guess.
 - "praise": one short encouraging sentence in English.
 
-Respond ONLY as JSON: {"transcript": string, "reply": string, "corrections": [{"original": string, "corrected": string, "explanation": string}], "betterAnswer": string, "pronunciation": string, "praise": string}`;
+Respond ONLY as JSON: {"transcript": string, "reply": string, "corrections": [{"original": string, "corrected": string, "explanation": string}], "betterAnswer": string, "pronunciation": string, "praise": string, "hints": [string]}`;
 }
 
 const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
@@ -66,6 +72,7 @@ export function parseTutorTurn(raw: unknown): TutorTurn {
     betterAnswer: text(obj.betterAnswer),
     pronunciation: text(obj.pronunciation),
     praise: text(obj.praise),
+    hints: (Array.isArray(obj.hints) ? obj.hints : []).map(text).filter(Boolean).slice(0, 3),
   };
 }
 
