@@ -8,6 +8,7 @@ import type {
 } from '../lib/messages.ts';
 import { createSettings } from '../lib/settings.ts';
 import { createTts } from '../lib/speech.ts';
+import { createActivation } from './activation.ts';
 import { extractArticle } from './extract.ts';
 import { collectHeadlines } from './headlines.ts';
 import { highlightTerms } from './highlighter.ts';
@@ -105,4 +106,8 @@ async function main(): Promise<void> {
   });
 }
 
-main().catch((error) => console.error('[Veritas]', error));
+const activation = createActivation(() => void main().catch((error) => console.error('[Veritas]', error)));
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (activation.handle(message)) sendResponse({ ok: true });
+  return false;
+});

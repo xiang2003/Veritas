@@ -1,5 +1,5 @@
 import { createGeminiClient } from '../lib/gemini.ts';
-import { articleKey } from '../lib/messages.ts';
+import { articleKey, type ActivateMessage } from '../lib/messages.ts';
 import { createSettings, DEFAULT_SETTINGS, type Settings } from '../lib/settings.ts';
 import { createRecorder } from '../lib/recorder.ts';
 import { createTts } from '../lib/speech.ts';
@@ -56,6 +56,10 @@ const windowIdPromise = chrome.windows.getCurrent().then((w) => w.id);
 async function loadActiveArticle(): Promise<ArticleData | null> {
   const [tab] = await chrome.tabs.query({ active: true, windowId: await windowIdPromise });
   if (tab?.id === undefined) return null;
+  // The panel being open is what turns Veritas on for a page. Pages without our content script
+  // (other sites, or tabs loaded before the extension) have no receiver – ignore those.
+  const activate: ActivateMessage = { type: 'activate' };
+  chrome.tabs.sendMessage(tab.id, activate).catch(() => {});
   const key = articleKey(tab.id);
   return ((await chrome.storage.session.get(key))[key] as ArticleData | undefined) ?? null;
 }

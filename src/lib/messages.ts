@@ -41,5 +41,10 @@ export type PronounceResponse = { ok: true; pronunciation: Pronunciation | null 
 export type Request = AnalyzeRequest | TranslateRequest | RecommendRequest | PronounceRequest;
 export type Response = AnalyzeResponse | TranslateResponse | RecommendResponse | PronounceResponse;
 
+/** Side panel -> content script: turn Veritas on for this tab. */
+export interface ActivateMessage {
+  type: 'activate';
+}
+
 /** storage.session key under which the background keeps each tab's current article. */
 export const articleKey = (tabId: number) => `article:${tabId}`;

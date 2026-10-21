@@ -2,7 +2,7 @@ import type { TutorTurn } from '../lib/tutor.ts';
 import type { Phase, View } from './controller.ts';
 
 const PHASE_LABEL: Record<Phase, string> = {
-  'no-article': 'Open an English news article, then reopen this panel.',
+  'no-article': 'Open an English news article in this window – Veritas turns on for it while this panel is open.',
   ready: 'Ready',
   listening: 'Recording… speak now (auto-sends after a pause)',
   thinking: 'Thinking…',
