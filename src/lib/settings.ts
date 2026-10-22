@@ -7,7 +7,7 @@ export interface Settings {
   autoHighlight: boolean;
   /** Show and load article recommendations on news front pages without clicking the toolbar icon. */
   autoRecommend: boolean;
-  /** Turn Veritas on by itself on news articles and open the tutor on the first click. */
+  /** Turn Veritas on by itself on news articles, with a 💬 AI 教練 button that opens the tutor. */
   autoOpen: boolean;
   speechRate: number;
 }

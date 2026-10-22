@@ -1,56 +1,53 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { installAutoOpen } from '../src/content/auto-open.ts';
+import { showTutorButton } from '../src/content/auto-open.ts';
 
 const tick = () => new Promise((r) => setImmediate(r));
 
-function page() {
-  const { window } = new JSDOM('<body><p id="p">Article text</p><div class="veritas-ui"><button id="ui">譯</button></div></body>');
+function setup(open: () => Promise<boolean>) {
+  const { window } = new JSDOM('<body><p>Article text</p></body>');
   const doc = window.document as unknown as Document;
-  const click = (id: string) => doc.getElementById(id)!.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-  return { window, doc, click };
+  const host = showTutorButton(doc, open);
+  return { doc, host, button: host.shadowRoot!.querySelector('button')! };
 }
 
-test('the first click on the article opens the panel, once', async () => {
-  const { doc, click } = page();
+test('the button is shown on load and opens nothing by itself', () => {
   let opens = 0;
-  installAutoOpen(doc, async () => (opens++, true));
-  click('p');
-  click('p');
-  await tick();
-  assert.equal(opens, 1);
-});
-
-test('a key press also counts as the gesture', async () => {
-  const { window, doc } = page();
-  let opens = 0;
-  installAutoOpen(doc, async () => (opens++, true));
-  doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'j' }));
-  await tick();
-  assert.equal(opens, 1);
-});
-
-test('clicks on Veritas controls do not trigger it', async () => {
-  const { doc, click } = page();
-  let opens = 0;
-  installAutoOpen(doc, async () => (opens++, true));
-  click('ui');
-  await tick();
+  const { host, button } = setup(async () => (opens++, true));
+  assert.ok(host.isConnected);
+  assert.equal(button.textContent, '💬 AI 教練');
   assert.equal(opens, 0);
 });
 
-test('if Chrome refuses, an open button appears and works on click', async () => {
-  const { doc, click } = page();
-  let allow = false;
-  installAutoOpen(doc, async () => allow);
-  click('p');
-  await tick();
-  const host = [...doc.body.children].at(-1) as HTMLElement;
-  const button = host.shadowRoot!.querySelector('button')!;
-  assert.match(button.textContent!, /開啟 AI 教練/);
-  allow = true;
+test('clicking it opens the tutor and the button stays for later', async () => {
+  let opens = 0;
+  const { host, button } = setup(async () => (opens++, true));
   button.click();
   await tick();
-  assert.equal(host.isConnected, false);
+  button.click();
+  await tick();
+  assert.equal(opens, 2);
+  assert.ok(host.isConnected);
+});
+
+test('if Chrome refuses, the button points to the toolbar icon', async () => {
+  const { button } = setup(async () => false);
+  button.click();
+  await tick();
+  assert.match(button.textContent!, /Veritas 圖示/);
+});
+
+test('an error while opening is treated like a refusal', async () => {
+  const { button } = setup(async () => {
+    throw new Error('may only be called in response to a user gesture');
+  });
+  button.click();
+  await tick();
+  assert.match(button.textContent!, /Veritas 圖示/);
+});
+
+test('the button is marked as Veritas UI so other passes ignore it', () => {
+  const { host } = setup(async () => true);
+  assert.equal(host.className, 'veritas-ui');
 });

@@ -13,7 +13,7 @@ import type {
 import { createSettings } from '../lib/settings.ts';
 import { createTts } from '../lib/speech.ts';
 import { createActivation } from './activation.ts';
-import { installAutoOpen } from './auto-open.ts';
+import { showTutorButton } from './auto-open.ts';
 import { extractArticle } from './extract.ts';
 import { collectHeadlines } from './headlines.ts';
 import { highlightTerms } from './highlighter.ts';
@@ -76,10 +76,10 @@ async function autoStart(): Promise<void> {
   const { autoRecommend, autoOpen } = await createSettings(chrome.storage.local).get();
   if (extractArticle(document)) {
     if (!autoOpen) return;
-    // News article: turn the page features on now, and open the tutor on the first click.
+    // News article: turn the page features on now; the tutor opens from the 💬 AI 教練 button.
     const activate: ActivateMessage = { type: 'activate' };
     activation.handle(activate);
-    installAutoOpen(document, async () => {
+    showTutorButton(document, async () => {
       const open: OpenPanelMessage = { type: 'open-panel' };
       const res: { ok: boolean } = await chrome.runtime.sendMessage(open);
       return res.ok;
