@@ -88,6 +88,11 @@ export type Response =
   | RecordLookupResponse
   | SummarizeResponse;
 
+/** Content script -> background, during a user gesture: open the tutor side panel. */
+export interface OpenPanelMessage {
+  type: 'open-panel';
+}
+
 /** Side panel -> content script: turn Veritas on for this tab. */
 export interface ActivateMessage {
   type: 'activate';

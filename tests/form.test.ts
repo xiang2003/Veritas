@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS } from '../src/lib/settings.ts';
 // form.ts uses HTMLInputElement for instanceof checks, so expose jsdom's globals first.
 const { window } = new JSDOM(`<form id="f">
   <input name="apiKey"><select name="level"><option>B2</option><option>C1</option></select>
-  <input name="nativeLanguage"><input name="interests"><input name="speechRate"><input name="autoHighlight" type="checkbox"><input name="autoRecommend" type="checkbox">
+  <input name="nativeLanguage"><input name="interests"><input name="speechRate"><input name="autoHighlight" type="checkbox"><input name="autoRecommend" type="checkbox"><input name="autoOpen" type="checkbox">
 </form>`);
 Object.assign(globalThis, { HTMLInputElement: window.HTMLInputElement });
 const { fillForm, readForm } = await import('../src/options/form.ts');

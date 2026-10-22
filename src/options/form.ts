@@ -21,6 +21,7 @@ export function readForm(form: HTMLFormElement): Partial<Settings> {
     interests: field('interests').value.trim(),
     autoHighlight: field('autoHighlight').checked,
     autoRecommend: field('autoRecommend').checked,
+    autoOpen: field('autoOpen').checked,
     speechRate: Number.isFinite(rate) ? Math.min(2, Math.max(0.5, rate)) : undefined,
   } as Partial<Settings>;
 }

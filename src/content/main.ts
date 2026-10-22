@@ -1,7 +1,9 @@
 import type {
   AnalyzeRequest,
+  ActivateMessage,
   AnalyzeResponse,
   DefineResponse,
+  OpenPanelMessage,
   PronounceResponse,
   RecommendResponse,
   SummarizeResponse,
@@ -11,6 +13,7 @@ import type {
 import { createSettings } from '../lib/settings.ts';
 import { createTts } from '../lib/speech.ts';
 import { createActivation } from './activation.ts';
+import { installAutoOpen } from './auto-open.ts';
 import { extractArticle } from './extract.ts';
 import { collectHeadlines } from './headlines.ts';
 import { highlightTerms } from './highlighter.ts';
@@ -66,10 +69,22 @@ function setUpFrontPage(autoOpen: boolean): boolean {
   return true;
 }
 
-/** Recommendations are the one feature that runs without activation (if enabled in Options). */
-async function autoRecommend(): Promise<void> {
-  const { autoRecommend } = await createSettings(chrome.storage.local).get();
-  if (!autoRecommend || extractArticle(document)) return;
+/** What runs without clicking the toolbar icon (each can be turned off in Options). */
+async function autoStart(): Promise<void> {
+  const { autoRecommend, autoOpen } = await createSettings(chrome.storage.local).get();
+  if (extractArticle(document)) {
+    if (!autoOpen) return;
+    // News article: turn the page features on now, and open the tutor on the first click.
+    const activate: ActivateMessage = { type: 'activate' };
+    activation.handle(activate);
+    installAutoOpen(document, async () => {
+      const open: OpenPanelMessage = { type: 'open-panel' };
+      const res: { ok: boolean } = await chrome.runtime.sendMessage(open);
+      return res.ok;
+    });
+    return;
+  }
+  if (!autoRecommend) return;
   // Some front pages render their story lists after load; look once more a little later.
   if (!setUpFrontPage(true)) setTimeout(() => setUpFrontPage(true), LATE_HEADLINES_RETRY_MS);
 }
@@ -186,4 +201,4 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (activation.handle(message)) sendResponse({ ok: true });
   return false;
 });
-void autoRecommend().catch((error) => console.error('[Veritas]', error));
+void autoStart().catch((error) => console.error('[Veritas]', error));
