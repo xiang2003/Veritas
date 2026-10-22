@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createGeminiClient, formatWait, GeminiError, parseJsonLoose, parseRetryDelayMs } from '../src/lib/gemini.ts';
-import { LIGHT_MODEL, QUALITY_MODEL, TASK_MODELS } from '../src/lib/models.ts';
+import { BALANCED_MODEL, LIGHT_MODEL, QUALITY_MODEL, TASK_MODELS } from '../src/lib/models.ts';
 
 const settings = async () => ({ apiKey: 'KEY' });
 const ok = (text: string) =>
@@ -31,14 +31,17 @@ test('sends key header, model url and system instruction', async () => {
   assert.equal(body.contents[0].role, 'user');
 });
 
-test('each task goes to its model: quality for analysis, tutor and transcription; light for the rest', async () => {
+test('each task goes to its model: quality for analysis and tutor, balanced for transcription, light for the rest', async () => {
   const used: string[] = [];
   const client = createGeminiClient({ getSettings: settings, fetch: async (url) => (used.push(modelOf(url)), ok('{}')) });
   for (const task of ['vocabulary', 'tutor', 'transcribe', 'translate', 'define', 'recommend'] as const) {
     await client.generateJson({ ...req, task });
   }
-  assert.deepEqual(used, [QUALITY_MODEL, QUALITY_MODEL, QUALITY_MODEL, LIGHT_MODEL, LIGHT_MODEL, LIGHT_MODEL]);
-  for (const models of Object.values(TASK_MODELS)) assert.equal(models.length, 2); // every task has a fallback
+  assert.deepEqual(used, [QUALITY_MODEL, QUALITY_MODEL, BALANCED_MODEL, LIGHT_MODEL, LIGHT_MODEL, LIGHT_MODEL]);
+  // Every task can fall back to all three models.
+  for (const models of Object.values(TASK_MODELS)) {
+    assert.deepEqual([...models].sort(), [BALANCED_MODEL, LIGHT_MODEL, QUALITY_MODEL].sort());
+  }
 });
 
 test('rejects when api key missing', async () => {
