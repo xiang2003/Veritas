@@ -1,6 +1,7 @@
 import type { Pronunciation } from './dictionary.ts';
 import type { Headline, Recommendation } from './recommend.ts';
 import type { ArticleData, VocabEntry } from './types.ts';
+import type { WordContext } from './wordbook.ts';
 
 /** Content script -> background: register the article and get its vocabulary. */
 export interface AnalyzeRequest {
@@ -50,8 +51,29 @@ export interface DefineRequest {
 
 export type DefineResponse = { ok: true; entry: VocabEntry } | { ok: false; error: string };
 
-export type Request = AnalyzeRequest | TranslateRequest | RecommendRequest | PronounceRequest | DefineRequest;
-export type Response = AnalyzeResponse | TranslateResponse | RecommendResponse | PronounceResponse | DefineResponse;
+/** Content script -> background: the learner looked a word up; add it to their wordbook. */
+export interface RecordLookupRequest {
+  type: 'record-lookup';
+  entry: VocabEntry;
+  context: WordContext;
+}
+
+export type RecordLookupResponse = { ok: true } | { ok: false; error: string };
+
+export type Request =
+  | AnalyzeRequest
+  | TranslateRequest
+  | RecommendRequest
+  | PronounceRequest
+  | DefineRequest
+  | RecordLookupRequest;
+export type Response =
+  | AnalyzeResponse
+  | TranslateResponse
+  | RecommendResponse
+  | PronounceResponse
+  | DefineResponse
+  | RecordLookupResponse;
 
 /** Side panel -> content script: turn Veritas on for this tab. */
 export interface ActivateMessage {

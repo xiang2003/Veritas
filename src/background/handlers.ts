@@ -5,6 +5,8 @@ import {
   type DefineRequest,
   type DefineResponse,
   type PronounceResponse,
+  type RecordLookupRequest,
+  type RecordLookupResponse,
   type RecommendRequest,
   type RecommendResponse,
   type Request,
@@ -19,6 +21,7 @@ import { translateParagraph } from '../lib/translate.ts';
 import type { Settings, StorageLike } from '../lib/settings.ts';
 import type { ArticleData, VocabEntry } from '../lib/types.ts';
 import { analyzeVocabulary, defineTerm, termKey } from '../lib/vocab.ts';
+import { createWordbook } from '../lib/wordbook.ts';
 
 const MAX_CACHED_ARTICLES = 100;
 const MAX_CACHED_TRANSLATIONS = 500;
@@ -71,6 +74,7 @@ export function createHandlers({
   const vocabCache = createLruCache<CachedVocab>(cache, { prefix: 'vocab:', indexKey: 'vocabIndex', max: MAX_CACHED_ARTICLES });
   const translationCache = createLruCache<string>(cache, { prefix: 'tr:', indexKey: 'trIndex', max: MAX_CACHED_TRANSLATIONS });
   const picksCache = createLruCache<CachedPicks>(cache, { prefix: 'rec:', indexKey: 'recIndex', max: MAX_CACHED_PAGES });
+  const wordbook = createWordbook(cache, now);
   const definitionCache = createLruCache<VocabEntry>(cache, { prefix: 'def:', indexKey: 'defIndex', max: MAX_CACHED_DEFINITIONS });
   // Unknown words are cached too ({ found: null }) so they are not looked up again.
   const pronunciationCache = createLruCache<{ found: Pronunciation | null }>(cache, {
@@ -142,6 +146,15 @@ export function createHandlers({
     }
   }
 
+  async function recordLookup({ entry, context }: RecordLookupRequest): Promise<RecordLookupResponse> {
+    try {
+      await wordbook.record(entry, context);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   async function pronounce(word: string): Promise<PronounceResponse> {
     try {
       const key = word.trim().toLowerCase();
@@ -168,6 +181,8 @@ export function createHandlers({
           return pronounce(message.word);
         case 'define':
           return define(message);
+        case 'record-lookup':
+          return recordLookup(message);
         default:
           return undefined;
       }

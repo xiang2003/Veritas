@@ -191,3 +191,12 @@ test('an empty explanation becomes an error response', async () => {
   const res = await s.handlers.handle({ type: 'define', term: 'x', context: 'x', title: 'T' });
   assert.ok(res && !res.ok);
 });
+
+test('record-lookup adds the word to the wordbook in local storage', async () => {
+  const s = setup();
+  const entry = { term: 'quell', lemma: 'quell', pos: 'verb', ipa: '', meaning: '平息', definition: '', example: '', usage: '' };
+  const res = await s.handlers.handle({ type: 'record-lookup', entry, context: { url: 'u', title: 'T', sentence: 'They quell it.' } });
+  assert.deepEqual(res, { ok: true });
+  const book = s.cache.data['wordbook'] as Record<string, { lookups: number }>;
+  assert.equal(book['quell']!.lookups, 1);
+});
