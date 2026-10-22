@@ -44,9 +44,11 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 const NEWS_SITES = chrome.runtime.getManifest().content_scripts?.flatMap((c) => c.matches ?? []) ?? [];
 
 function syncPanel(tabId: number, url: string | undefined): void {
-  // No per-tab `path`: that would give each tab its own panel instead of the one window-wide panel
-  // that stays open across news tabs.
-  chrome.sidePanel.setOptions({ tabId, enabled: isNewsUrl(url, NEWS_SITES) }).catch(console.error);
+  if (!url) return; // URL not known yet; a later update will carry it
+  // As in Chrome's site-specific side panel sample: an enabled tab must also name the panel page,
+  // otherwise clicking the toolbar icon may open nothing.
+  const options = isNewsUrl(url, NEWS_SITES) ? { tabId, path: 'sidepanel.html', enabled: true } : { tabId, enabled: false };
+  chrome.sidePanel.setOptions(options).catch(console.error);
 }
 
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
