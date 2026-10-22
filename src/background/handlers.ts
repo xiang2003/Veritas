@@ -146,9 +146,9 @@ export function createHandlers({
     }
   }
 
-  async function recordLookup({ entry, context }: RecordLookupRequest): Promise<RecordLookupResponse> {
+  async function recordLookup({ entry, context, count }: RecordLookupRequest): Promise<RecordLookupResponse> {
     try {
-      await wordbook.record(entry, context);
+      await wordbook.record(entry, context, { count });
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };

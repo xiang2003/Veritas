@@ -112,3 +112,13 @@ test('toCsv quotes every cell and escapes quotes', async () => {
   assert.match(row!, /"He said ""no""\."/);
   assert.match(row!, /"1","The beleaguered mayor resigned\.","https:\/\/cnn\.com\/a"$/);
 });
+
+test('count: false updates the card without counting or un-mastering', async () => {
+  const { book } = setup();
+  await book.record(entry({ definition: '' }), ctx());
+  await book.setMastered('beleaguered', true);
+  const r = await book.record(entry({ definition: 'besieged' }), ctx(), { count: false });
+  assert.equal(r.lookups, 1);
+  assert.equal(r.definition, 'besieged');
+  assert.equal(r.mastered, true);
+});

@@ -73,14 +73,16 @@ export interface SelectionPopupDeps {
   /** Full vocabulary card for a short selection, explained in the sense of its passage. */
   define: (text: string, context: string) => Promise<VocabEntry>;
   /** Called after a successful explanation (e.g. to underline the term on the page). */
-  onDefined?: (entry: VocabEntry) => void;
+  onDefined?: (entry: VocabEntry, context: string) => void;
+  /** Called after a successful translation of a word or short phrase (a lookup worth recording). */
+  onTranslated?: (text: string, translation: string, context: string) => void;
   pronounce: (text: string) => Promise<void>;
   /** Dictionary IPA for a single word, if known. */
   ipaOf: (word: string) => Promise<string | undefined>;
 }
 
 /** Small toolbar shown next to selected text: 🔊 read it aloud, 譯 translate it in context. */
-export function createSelectionPopup(doc: Document, { translate, define, onDefined, pronounce, ipaOf }: SelectionPopupDeps) {
+export function createSelectionPopup(doc: Document, { translate, define, onDefined, onTranslated, pronounce, ipaOf }: SelectionPopupDeps) {
   const win = doc.defaultView!;
   const host = doc.createElement('div');
   host.className = UI_CLASS;
@@ -136,6 +138,7 @@ export function createSelectionPopup(doc: Document, { translate, define, onDefin
     out.textContent = '翻譯中…';
     try {
       const translation = await translate(selected.text, selected.context);
+      if (isShortTerm(selected.text)) onTranslated?.(selected.text, translation, selected.context);
       if (current === selected) out.textContent = translation;
     } catch (error) {
       if (current === selected) out.textContent = `⚠ ${error instanceof Error ? error.message : String(error)}`;
@@ -173,7 +176,7 @@ export function createSelectionPopup(doc: Document, { translate, define, onDefin
     out.textContent = '解釋中…';
     try {
       const entry = await define(selected.text, selected.context);
-      onDefined?.(entry);
+      onDefined?.(entry, selected.context);
       if (current !== selected) return;
       renderEntry(entry);
       if (entry.ipa && !ipaLine.textContent) ipaLine.textContent = entry.ipa;

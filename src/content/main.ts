@@ -16,12 +16,13 @@ import { highlightTerms } from './highlighter.ts';
 import { createParagraphTools } from './paragraphs.ts';
 import { createPronouncer, playAudioUrl } from './pronounce.ts';
 import { createRecommendPanel, markPickedLinks } from './recommend-ui.ts';
-import { createSelectionPopup, isSingleWord } from './selection.ts';
+import { blockText, createSelectionPopup, isSingleWord } from './selection.ts';
 import { injectStyles } from './styles.ts';
 import { showToast } from './toast.ts';
 import { createTooltip } from './tooltip.ts';
 import type { VocabEntry } from '../lib/types.ts';
 import { termKey } from '../lib/vocab.ts';
+import { sentenceAround } from '../lib/wordbook.ts';
 
 const REAPPLY_DELAY_MS = 500;
 
@@ -95,6 +96,16 @@ async function main(): Promise<void> {
   const article = extractArticle(document);
   const title = article?.title ?? document.title;
 
+  // Wordbook: each word counts once per page view, however often it is looked up here.
+  const countedHere = new Set<string>();
+  const recordLookup = (entry: VocabEntry, passage: string) => {
+    const key = termKey(entry.lemma || entry.term);
+    const count = !countedHere.has(key);
+    countedHere.add(key);
+    const context = { url: location.href.split('#')[0]!, title, sentence: sentenceAround(passage, entry.term) };
+    void send({ type: 'record-lookup', entry, context, count }).catch(() => {});
+  };
+
   // Every term with a card: the AI's article analysis plus anything the reader asked to explain.
   const vocabulary = new Map<string, VocabEntry>();
   const addTerms = (list: VocabEntry[]) => list.forEach((e) => vocabulary.set(termKey(e.term), e));
@@ -104,6 +115,7 @@ async function main(): Promise<void> {
     // Single words: the dictionary form has a human recording; phrases are spoken as written.
     speak: (entry) => void pronouncer.pronounce(entry.lemma || entry.term, entry.term),
     fetchIpa: async (entry) => (await pronouncer.find(entry.lemma || entry.term))?.ipa,
+    onLookup: (entry, target) => recordLookup(entry, blockText(target)),
   });
 
   // Selection toolbar works on every activated page, article or not.
@@ -114,10 +126,16 @@ async function main(): Promise<void> {
       if (!res.ok) throw new Error(res.error);
       return res.entry;
     },
-    onDefined: (entry) => {
+    onDefined: (entry, context) => {
+      recordLookup(entry, context);
       addTerms([entry]);
       if (article) highlightTerms(article.root, [entry]);
     },
+    onTranslated: (text, translation, context) =>
+      recordLookup(
+        { term: text, lemma: text, meaning: translation, pos: '', ipa: '', definition: '', example: '', usage: '' },
+        context,
+      ),
     // Single words get the dictionary recording; longer selections are read by the browser voice.
     pronounce: (text) => (isSingleWord(text) ? pronouncer.pronounce(text) : tts.speak(text, speechRate)),
     ipaOf: async (word) => (await pronouncer.find(word))?.ipa,

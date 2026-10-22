@@ -165,3 +165,32 @@ test('解釋 is hidden for long selections and shows errors', async () => {
   await tick();
   assert.match(ui.card.querySelector('.out')!.textContent!, /免費額度已用完/);
 });
+
+test('explaining or translating a short term reports it with its passage', async () => {
+  const p = page();
+  const reports: string[] = [];
+  const ui = createSelectionPopup(p.doc, {
+    translate: async () => '轉移焦點',
+    define: async (text) => card(text),
+    onDefined: (entry, context) => void reports.push(`define:${entry.term}|${context}`),
+    onTranslated: (text, translation, context) => void reports.push(`translate:${text}=${translation}|${context}`),
+    pronounce: async () => {},
+    ipaOf: async () => undefined,
+  });
+  p.select('red herring');
+  p.mouseup();
+  await tick();
+  ui.card.querySelector<HTMLElement>('.tr')!.click();
+  await tick();
+  ui.card.querySelector<HTMLElement>('.def')!.click();
+  await tick();
+  assert.deepEqual(reports, [`translate:red herring=轉移焦點|${PARA}`, `define:red herring|${PARA}`]);
+
+  reports.length = 0;
+  p.select('accused of spreading a red herring'); // too long to be a vocabulary lookup
+  p.mouseup();
+  await tick();
+  ui.card.querySelector<HTMLElement>('.tr')!.click();
+  await tick();
+  assert.deepEqual(reports, []);
+});

@@ -85,7 +85,11 @@ export function createWordbook(area: StorageLike, now: () => number = Date.now) 
   }
 
   return {
-    record(entry: VocabEntry, context: WordContext): Promise<WordRecord> {
+    /**
+     * Save a lookup. With `count: false` the card/context are updated without counting another lookup
+     * (e.g. the same word explained again on the same page).
+     */
+    record(entry: VocabEntry, context: WordContext, { count = true } = {}): Promise<WordRecord> {
       return change((book) => {
         const key = termKey(entry.lemma || entry.term);
         const at = now();
@@ -101,10 +105,10 @@ export function createWordbook(area: StorageLike, now: () => number = Date.now) 
           meaning: pick('meaning'),
           definition: pick('definition'),
           example: pick('example'),
-          lookups: (old?.lookups ?? 0) + 1,
+          lookups: (old?.lookups ?? 0) + (count ? 1 : 0),
           firstSeen: old?.firstSeen ?? at,
           lastSeen: at,
-          mastered: false,
+          mastered: count ? false : (old?.mastered ?? false),
           contexts,
         };
         book[key] = record;

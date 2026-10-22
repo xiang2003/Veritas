@@ -4,6 +4,8 @@ import { TERM_CLASS } from './highlighter.ts';
 import { computePosition } from './tooltip-position.ts';
 
 const HIDE_DELAY_MS = 150;
+/** Looking at a card this long counts as looking the word up (shorter is just passing the mouse over). */
+const LOOKUP_DWELL_MS = 1000;
 
 const STYLE = `
 :host { all: initial; }
@@ -68,10 +70,16 @@ export interface TooltipDeps {
   speak: (entry: VocabEntry) => void;
   /** Optional dictionary IPA; replaces the AI-estimated one when it arrives. */
   fetchIpa?: (entry: VocabEntry) => Promise<string | undefined>;
+  /** The learner looked this word up: read its card for a while, or played its pronunciation. */
+  onLookup?: (entry: VocabEntry, target: HTMLElement) => void;
+  dwellMs?: number;
 }
 
 /** Hover tooltip for highlighted terms (rendered in a shadow root so page CSS cannot leak in). */
-export function createTooltip(doc: Document, { lookup, speak, fetchIpa }: TooltipDeps) {
+export function createTooltip(
+  doc: Document,
+  { lookup, speak, fetchIpa, onLookup, dwellMs = LOOKUP_DWELL_MS }: TooltipDeps,
+) {
   const host = doc.createElement('div');
   const shadow = host.attachShadow({ mode: 'open' });
   const style = doc.createElement('style');
@@ -83,13 +91,23 @@ export function createTooltip(doc: Document, { lookup, speak, fetchIpa }: Toolti
   const win = doc.defaultView!;
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
   let shown: VocabEntry | undefined;
+  let dwellTimer: ReturnType<typeof setTimeout> | undefined;
   const termOf = (e: Event) => (e.target as Element | null)?.closest?.<HTMLElement>(`.${TERM_CLASS}`) ?? null;
 
   function show(target: HTMLElement) {
     const entry = lookup(target.dataset.term ?? '');
     if (!entry) return;
     clearTimeout(hideTimer);
-    card.replaceChildren(renderEntry(doc, entry, speak));
+    card.replaceChildren(
+      renderEntry(doc, entry, (e) => {
+        onLookup?.(e, target);
+        speak(e);
+      }),
+    );
+    if (shown !== entry || card.style.display !== 'block') {
+      clearTimeout(dwellTimer);
+      dwellTimer = setTimeout(() => onLookup?.(entry, target), dwellMs);
+    }
     shown = entry;
     fetchIpa?.(entry).then((ipa) => {
       const target = card.querySelector('.ipa');
@@ -106,7 +124,10 @@ export function createTooltip(doc: Document, { lookup, speak, fetchIpa }: Toolti
   }
 
   const scheduleHide = () => {
-    hideTimer = setTimeout(() => (card.style.display = 'none'), HIDE_DELAY_MS);
+    hideTimer = setTimeout(() => {
+      card.style.display = 'none';
+      clearTimeout(dwellTimer); // left before the dwell time: not a lookup
+    }, HIDE_DELAY_MS);
   };
 
   doc.addEventListener('mouseover', (e) => {

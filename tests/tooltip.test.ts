@@ -76,3 +76,43 @@ test('dictionary IPA replaces the AI estimate when it arrives for the card still
   await new Promise((r) => setImmediate(r));
   assert.equal(tip.card.querySelector('.ipa')!.textContent, '/ˈɛləkwənt/');
 });
+
+function hoverSetup(dwellMs = 20) {
+  const { window } = new JSDOM('<body><p><span class="veritas-term" data-term="eloquent">Eloquent</span> words.</p></body>');
+  const document = window.document as unknown as Document;
+  const lookups: string[] = [];
+  const tip = createTooltip(document, {
+    lookup: () => entry,
+    speak() {},
+    onLookup: (e) => void lookups.push(e.term),
+    dwellMs,
+  });
+  const span = document.querySelector('.veritas-term')!;
+  const over = () => span.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }));
+  const out = () => span.dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true }));
+  return { tip, lookups, over, out };
+}
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+test('reading a card for the dwell time counts as a lookup', async () => {
+  const s = hoverSetup();
+  s.over();
+  await wait(40);
+  assert.deepEqual(s.lookups, ['eloquent']);
+});
+
+test('just passing the mouse over a word is not a lookup', async () => {
+  const s = hoverSetup(300); // longer than the 150ms hide delay
+  s.over();
+  s.out();
+  await wait(400);
+  assert.equal(s.tip.card.style.display, 'none');
+  assert.deepEqual(s.lookups, []);
+});
+
+test('playing the pronunciation counts as a lookup right away', () => {
+  const s = hoverSetup(10_000);
+  s.over();
+  (s.tip.card.querySelector('button') as HTMLButtonElement).click();
+  assert.deepEqual(s.lookups, ['eloquent']);
+});

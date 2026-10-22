@@ -56,6 +56,8 @@ export interface RecordLookupRequest {
   type: 'record-lookup';
   entry: VocabEntry;
   context: WordContext;
+  /** false: only update the card (this page already counted a lookup of the word). */
+  count?: boolean;
 }
 
 export type RecordLookupResponse = { ok: true } | { ok: false; error: string };
