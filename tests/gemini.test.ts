@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createGeminiClient, formatWait, GeminiError, parseJsonLoose, parseRetryDelayMs } from '../src/lib/gemini.ts';
-import { FLASH_3_5, FLASH_3_6, FLASH_3_8, FLASH_LITE_3_5, TASK_MODELS } from '../src/lib/models.ts';
+import { createGeminiClient, formatWait, GeminiError, parseJsonLoose, parseRetryDelayMs, resolveModels } from '../src/lib/gemini.ts';
+import { FLASH_3, FLASH_3_8, LITE_3_1, TASK_MODELS } from '../src/lib/models.ts';
 
 const settings = async () => ({ apiKey: 'KEY' });
 const ok = (text: string) =>
@@ -31,17 +31,68 @@ test('sends key header, model url and system instruction', async () => {
   assert.equal(body.contents[0].role, 'user');
 });
 
-test('each main task leads with its own model; simple tasks use lite', async () => {
+/** Fake API: ListModels returns `ids`; generateContent answers "{}" and records the model used. */
+function fakeApi(ids: string[]) {
   const used: string[] = [];
-  const client = createGeminiClient({ getSettings: settings, log: () => {}, fetch: async (url) => (used.push(modelOf(url)), ok('{}')) });
+  let listCalls = 0;
+  const fetch = async (url: unknown) => {
+    if (!String(url).includes(':generateContent')) {
+      listCalls++;
+      return {
+        ok: true,
+        json: async () => ({ models: ids.map((id) => ({ name: `models/${id}`, supportedGenerationMethods: ['generateContent'] })) }),
+      } as Response;
+    }
+    used.push(modelOf(url));
+    return ok('{}');
+  };
+  return { fetch, used, listCalls: () => listCalls };
+}
+
+const ALL = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite-preview'];
+
+test('each main task leads with its own model; simple tasks use the 500/day lite model', async () => {
+  const api = fakeApi(ALL);
+  const client = createGeminiClient({ getSettings: settings, log: () => {}, fetch: api.fetch });
   const tasks = ['tutor', 'vocabulary', 'transcribe', 'translate', 'define', 'recommend', 'summarize'] as const;
   for (const task of tasks) await client.generateJson({ ...req, task });
-  assert.deepEqual(used, [FLASH_3_8, FLASH_3_6, FLASH_3_5, FLASH_LITE_3_5, FLASH_LITE_3_5, FLASH_LITE_3_5, FLASH_LITE_3_5]);
+  assert.deepEqual(api.used, [
+    'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3-flash-preview',
+    'gemini-3.5-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.5-flash-lite',
+  ]);
+  assert.equal(api.listCalls(), 1); // the model list is fetched once per client
 });
 
-test('every task can fall back to all four models, each listed once', () => {
-  const all = [FLASH_3_8, FLASH_3_6, FLASH_3_5, FLASH_LITE_3_5].sort();
-  for (const models of Object.values(TASK_MODELS)) assert.deepEqual([...models].sort(), all);
+test('the three main tasks start on three different Flash models', () => {
+  const firsts = (['tutor', 'vocabulary', 'transcribe'] as const).map((t) => String(TASK_MODELS[t][0]));
+  assert.equal(new Set(firsts).size, 3);
+  for (const models of Object.values(TASK_MODELS)) assert.ok(models.length >= 3); // always at least two fallbacks
+});
+
+test('resolveModels picks the first usable candidate and drops models the key cannot use', () => {
+  const choices = [FLASH_3_8, FLASH_3, LITE_3_1, 'plain-id'];
+  const available = new Set(['gemini-3-flash-preview', 'gemini-3.1-flash-lite', 'plain-id']);
+  assert.deepEqual(resolveModels(choices, available), ['gemini-3-flash-preview', 'gemini-3.1-flash-lite', 'plain-id']);
+  // Without a list (lookup failed) the first candidate of each is used.
+  assert.deepEqual(resolveModels(choices, undefined), ['gemini-3.8-flash', 'gemini-3-flash', 'gemini-3.1-flash-lite', 'plain-id']);
+});
+
+test('if the model list cannot be fetched, requests still go out with the default IDs and the list is retried', async () => {
+  let listCalls = 0;
+  const used: string[] = [];
+  const client = createGeminiClient({
+    getSettings: settings,
+    log: () => {},
+    fetch: async (url) => {
+      if (!String(url).includes(':generateContent')) return (listCalls++, failing(500));
+      used.push(modelOf(url));
+      return ok('{}');
+    },
+  });
+  await client.generateJson({ ...req, task: 'transcribe' });
+  await client.generateJson({ ...req, task: 'transcribe' });
+  assert.deepEqual(used, ['gemini-3-flash', 'gemini-3-flash']);
+  assert.equal(listCalls, 2);
 });
 
 test('rejects when api key missing', async () => {

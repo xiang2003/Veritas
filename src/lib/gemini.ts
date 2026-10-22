@@ -1,4 +1,4 @@
-import { TASK_MODELS, TASK_TIMEOUT_MS, type Task } from './models.ts';
+import { TASK_MODELS, TASK_TIMEOUT_MS, type ModelChoice, type Task } from './models.ts';
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -58,10 +58,24 @@ interface GeminiDeps {
   now?: () => number;
   getSettings: () => Promise<{ apiKey: string }>;
   /** Models per task; defaults to TASK_MODELS. */
-  routes?: Readonly<Record<Task, readonly string[]>>;
+  routes?: Readonly<Record<Task, readonly ModelChoice[]>>;
   /** Per-model time limit per task; defaults to TASK_TIMEOUT_MS. */
   timeouts?: Readonly<Record<Task, number>>;
   log?: (message: string) => void;
+}
+
+/**
+ * Pick, for each choice, the first candidate ID the key can use for generateContent. Choices with
+ * no usable candidate are dropped; without a model list (lookup failed) the first candidate is used.
+ */
+export function resolveModels(choices: readonly ModelChoice[], available: ReadonlySet<string> | undefined): string[] {
+  const ids: string[] = [];
+  for (const choice of choices) {
+    const candidates = typeof choice === 'string' ? [choice] : choice;
+    const id = available ? candidates.find((c) => available.has(c)) : candidates[0];
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
 }
 
 /** Parse Google's "Please retry in 4h14m50.4s" hint from an error message. */
@@ -120,6 +134,29 @@ export function createGeminiClient({
 }: GeminiDeps): JsonGenerator {
   /** Models whose quota is used up, with the time it resets – skipped until then. */
   const exhaustedUntil = new Map<string, number>();
+  let available: Promise<Set<string> | undefined> | undefined;
+
+  /**
+   * The model IDs this key can call (ListModels; does not count against generation quotas). Only
+   * needed when a route lists alternative IDs for a model. A failed lookup is retried next time.
+   */
+  function listModels(apiKey: string): Promise<Set<string> | undefined> {
+    available ??= fetchImpl(`${ENDPOINT}?pageSize=1000`, { headers: { 'x-goog-api-key': apiKey } })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`ListModels ${r.status}`))))
+      .then((body: any) => {
+        const ids = (body?.models ?? [])
+          .filter((m: any) => (m?.supportedGenerationMethods ?? []).includes('generateContent'))
+          .map((m: any) => String(m.name).replace(/^models\//, ''));
+        log(`models available: ${ids.length}`);
+        return new Set<string>(ids);
+      })
+      .catch((error) => {
+        log(`could not list models (${error instanceof Error ? error.message : String(error)}); using default IDs`);
+        available = undefined;
+        return undefined;
+      });
+    return available;
+  }
 
   /**
    * One HTTP request with a time limit. Without it a stalled request left the UI waiting forever;
@@ -177,7 +214,10 @@ export function createGeminiClient({
         }),
       };
 
-      const models = routes[task];
+      const choices = routes[task];
+      const needsLookup = choices.some((c) => typeof c !== 'string' && c.length > 1);
+      const models = resolveModels(choices, needsLookup ? await listModels(apiKey) : undefined);
+      if (!models.length) throw new GeminiError(`No Gemini model available for ${task}`);
       const resetIn = (model: string) => (exhaustedUntil.get(model) ?? 0) - now();
       let lastError: GeminiError | undefined;
       for (const model of models) {
