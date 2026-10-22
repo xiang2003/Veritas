@@ -30,6 +30,8 @@ import { termKey } from '../lib/vocab.ts';
 import { sentenceAround } from '../lib/wordbook.ts';
 
 const REAPPLY_DELAY_MS = 500;
+const DONE_TOAST_MS = 3000;
+const ERROR_TOAST_MS = 12_000;
 
 const send = <T>(request: Request): Promise<T> => chrome.runtime.sendMessage(request);
 
@@ -185,15 +187,26 @@ async function main(): Promise<void> {
   apply();
   keepApplied(root, apply);
 
+  // Analysis can take a while on long articles: keep the learner informed until it is done.
+  const status = showToast(document, '正在分析這篇文章的生字…（長文章可能要一分鐘）', { persist: true });
   const request: AnalyzeRequest = { type: 'analyze', article: data };
-  const response = await send<AnalyzeResponse>(request);
-  if (!response.ok) return showToast(document, response.error);
-  if (!response.entries.length) return showToast(document, 'AI returned no usable vocabulary for this page.');
+  const response = await send<AnalyzeResponse>(request).catch(
+    (error): AnalyzeResponse => ({ ok: false, error: error instanceof Error ? error.message : String(error) }),
+  );
+  if (!response.ok) {
+    status.update(`生字分析失敗：${response.error}`);
+    return status.close(ERROR_TOAST_MS);
+  }
+  if (!response.entries.length) {
+    status.update('AI 沒有回傳可用的生字。');
+    return status.close(ERROR_TOAST_MS);
+  }
 
   addTerms(response.entries);
   const count = highlightTerms(root, response.entries);
   console.info(`[Veritas] ${response.entries.length} terms from AI, ${count} highlighted`, response.entries.map((e) => e.term));
-  if (!count) showToast(document, `AI found ${response.entries.length} terms but none matched the page text.`);
+  status.update(count ? `已標出 ${response.entries.length} 個生字` : `AI 找到 ${response.entries.length} 個生字，但和頁面文字對不上。`);
+  status.close(count ? DONE_TOAST_MS : ERROR_TOAST_MS);
 }
 
 const activation = createActivation(() => void main().catch((error) => console.error('[Veritas]', error)));

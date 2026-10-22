@@ -5,7 +5,7 @@ const PHASE_LABEL: Record<Phase, string> = {
   'no-article': 'Open an English news article in this window – Veritas turns on for it while this panel is open.',
   ready: 'Ready',
   listening: 'Recording… speak now (auto-sends after a pause)',
-  thinking: 'Thinking…',
+  thinking: 'AI 思考中…',
   speaking: 'Tutor is speaking…',
 };
 
@@ -40,6 +40,7 @@ export function createView(doc: Document, parts: ViewParts, onReplay: (text: str
   };
 
   const scrollDown = () => (parts.log.scrollTop = parts.log.scrollHeight);
+  let thinkingTimer: ReturnType<typeof setInterval> | undefined;
 
   function feedbackCard(turn: TutorTurn): HTMLElement | null {
     if (!turn.corrections.length && !turn.betterAnswer && !turn.pronunciation) return null;
@@ -64,6 +65,14 @@ export function createView(doc: Document, parts: ViewParts, onReplay: (text: str
   return {
     setPhase(phase) {
       parts.status.textContent = PHASE_LABEL[phase];
+      // Show how long the AI has been working, so a slow answer does not look like a frozen panel.
+      clearInterval(thinkingTimer);
+      if (phase === 'thinking') {
+        const started = Date.now();
+        thinkingTimer = setInterval(() => {
+          parts.status.textContent = `${PHASE_LABEL.thinking} ${Math.round((Date.now() - started) / 1000)} 秒`;
+        }, 1000);
+      }
       const busy = phase === 'thinking' || phase === 'no-article';
       parts.startButton.hidden = phase !== 'ready' || parts.log.childElementCount > 0;
       parts.micButton.disabled = busy;

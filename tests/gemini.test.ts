@@ -212,3 +212,51 @@ test('an unavailable model or persistent overload falls back to the other model'
     assert.deepEqual(await client.generateJson(req), { ok: 1 });
   }
 });
+
+const fastTimeouts = { vocabulary: 20, tutor: 20, transcribe: 20, translate: 20, define: 20, recommend: 20, summarize: 20 };
+
+test('a model that does not answer in time is abandoned for the next one', async () => {
+  const logs: string[] = [];
+  const client = createGeminiClient({
+    getSettings: settings,
+    routes: pair,
+    timeouts: fastTimeouts,
+    log: (m) => void logs.push(m),
+    fetch: (url, init) =>
+      modelOf(url) === 'main'
+        ? new Promise((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(new Error('aborted'))))
+        : Promise.resolve(ok('{"from":"backup"}')),
+  });
+  assert.deepEqual(await client.generateJson(req), { from: 'backup' });
+  assert.match(logs[0]!, /tutor → main failed after .*逾時/);
+  assert.match(logs[1]!, /tutor → backup: \d+\.\ds/);
+});
+
+test('when every model times out, the error says so instead of waiting forever', async () => {
+  const client = createGeminiClient({
+    getSettings: settings,
+    routes: single,
+    timeouts: fastTimeouts,
+    log: () => {},
+    fetch: (_url, init) => new Promise((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(new Error('aborted')))),
+  });
+  await assert.rejects(client.generateJson(req), /AI 回應逾時（m1/);
+});
+
+test('a network failure moves on to the next model', async () => {
+  const client = createGeminiClient({
+    getSettings: settings,
+    routes: pair,
+    log: () => {},
+    fetch: async (url) => {
+      if (modelOf(url) === 'main') throw new TypeError('Failed to fetch');
+      return ok('{"ok":1}');
+    },
+  });
+  assert.deepEqual(await client.generateJson(req), { ok: 1 });
+});
+
+test('every task has a time limit', async () => {
+  const { TASK_TIMEOUT_MS } = await import('../src/lib/models.ts');
+  for (const task of Object.keys(TASK_MODELS)) assert.ok((TASK_TIMEOUT_MS as Record<string, number>)[task]! > 0, task);
+});

@@ -14,6 +14,20 @@ export const LIGHT_MODEL = 'gemini-3.5-flash-lite';
  * - light first: simple, frequent tasks.
  * Fallbacks step down (or up) one tier at a time so quality changes gradually.
  */
+/**
+ * How long one model may take before the request moves on to the next model. Vocabulary analysis
+ * writes a long answer for a whole article, so it gets the most time.
+ */
+export const TASK_TIMEOUT_MS: Readonly<Record<Task, number>> = {
+  vocabulary: 90_000, // x3 models stays within the ~5 min a service worker may spend on one message
+  tutor: 60_000,
+  transcribe: 60_000,
+  summarize: 60_000,
+  translate: 45_000,
+  define: 45_000,
+  recommend: 45_000,
+};
+
 export const TASK_MODELS: Readonly<Record<Task, readonly string[]>> = {
   vocabulary: [QUALITY_MODEL, BALANCED_MODEL, LIGHT_MODEL],
   tutor: [QUALITY_MODEL, BALANCED_MODEL, LIGHT_MODEL],

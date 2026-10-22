@@ -1,4 +1,4 @@
-import { TASK_MODELS, type Task } from './models.ts';
+import { TASK_MODELS, TASK_TIMEOUT_MS, type Task } from './models.ts';
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -59,6 +59,9 @@ interface GeminiDeps {
   getSettings: () => Promise<{ apiKey: string }>;
   /** Models per task; defaults to TASK_MODELS. */
   routes?: Readonly<Record<Task, readonly string[]>>;
+  /** Per-model time limit per task; defaults to TASK_TIMEOUT_MS. */
+  timeouts?: Readonly<Record<Task, number>>;
+  log?: (message: string) => void;
 }
 
 /** Parse Google's "Please retry in 4h14m50.4s" hint from an error message. */
@@ -112,17 +115,38 @@ export function createGeminiClient({
   now = Date.now,
   getSettings,
   routes = TASK_MODELS,
+  timeouts = TASK_TIMEOUT_MS,
+  log = (message) => console.info(`[Veritas] ${message}`),
 }: GeminiDeps): JsonGenerator {
   /** Models whose quota is used up, with the time it resets – skipped until then. */
   const exhaustedUntil = new Map<string, number>();
 
-  /** One model, with short retries for transient overload / rate limiting. */
-  async function callModel(model: string, init: RequestInit): Promise<unknown> {
-    for (let attempt = 1; ; attempt++) {
-      const response = await fetchImpl(`${ENDPOINT}/${model}:generateContent`, init);
-      if (response.ok) return parseJsonLoose(extractText(await response.json()));
+  /**
+   * One HTTP request with a time limit. Without it a stalled request left the UI waiting forever;
+   * a timeout or network failure lets the next model take over.
+   */
+  async function fetchWithTimeout(model: string, init: RequestInit, timeoutMs: number) {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), timeoutMs);
+    try {
+      const response = await fetchImpl(`${ENDPOINT}/${model}:generateContent`, { ...init, signal: abort.signal });
+      const body: any = await response.json().catch(() => undefined);
+      return { response, body };
+    } catch {
+      const reason = abort.signal.aborted ? `AI 回應逾時（${model}，超過 ${Math.round(timeoutMs / 1000)} 秒）` : `無法連線到 Gemini（${model}）`;
+      throw new GeminiError(reason, undefined, { fallback: true });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
-      const detail = await response.json().then((j: any) => j?.error?.message as string | undefined, () => undefined);
+  /** One model, with short retries for transient overload / rate limiting. */
+  async function callModel(model: string, init: RequestInit, timeoutMs: number): Promise<unknown> {
+    for (let attempt = 1; ; attempt++) {
+      const { response, body } = await fetchWithTimeout(model, init, timeoutMs);
+      if (response.ok) return parseJsonLoose(extractText(body));
+
+      const detail = body?.error?.message as string | undefined;
       const requestedWait = detail ? parseRetryDelayMs(detail) : undefined;
       const wait = requestedWait ?? BASE_DELAY_MS * 2 ** (attempt - 1);
       if (RETRYABLE.has(response.status) && attempt < MAX_ATTEMPTS && wait <= MAX_AUTO_WAIT_MS) {
@@ -158,9 +182,14 @@ export function createGeminiClient({
       let lastError: GeminiError | undefined;
       for (const model of models) {
         if (resetIn(model) > 0) continue;
+        const started = now();
+        const seconds = () => ((now() - started) / 1000).toFixed(1);
         try {
-          return await callModel(model, init);
+          const result = await callModel(model, init, timeouts[task]);
+          log(`${task} → ${model}: ${seconds()}s`);
+          return result;
         } catch (error) {
+          log(`${task} → ${model} failed after ${seconds()}s: ${error instanceof Error ? error.message : String(error)}`);
           if (!(error instanceof GeminiError) || !error.fallback) throw error;
           if (error.retryAfterMs !== undefined) exhaustedUntil.set(model, now() + error.retryAfterMs);
           lastError = error;
