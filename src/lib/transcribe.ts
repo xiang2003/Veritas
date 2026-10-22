@@ -28,6 +28,7 @@ export async function transcribeSpeech(
   { nativeLanguage }: { nativeLanguage: string },
 ): Promise<Transcription> {
   const raw = (await client.generateJson({
+    task: 'transcribe',
     system: buildTranscribeSystemPrompt(nativeLanguage),
     messages: [{ role: 'user', text: 'Transcribe this recording.', audio: clip }],
     temperature: 0,

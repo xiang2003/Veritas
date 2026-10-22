@@ -1,6 +1,5 @@
 export interface Settings {
   apiKey: string;
-  model: string;
   nativeLanguage: string;
   level: string;
   /** Topics the learner likes, used to recommend articles. */
@@ -13,7 +12,6 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   apiKey: '',
-  model: 'gemini-3.8-flash',
   nativeLanguage: 'Traditional Chinese',
   level: 'B2',
   interests: '',

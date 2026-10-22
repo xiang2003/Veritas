@@ -1,11 +1,19 @@
+import { TASK_MODELS, type Task } from './models.ts';
+
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 export class GeminiError extends Error {
   status?: number;
-  constructor(message: string, status?: number) {
+  /** Another model may still work (quota used up, model unavailable, persistent overload). */
+  fallback: boolean;
+  /** For a used-up quota: how long until it resets. */
+  retryAfterMs?: number;
+  constructor(message: string, status?: number, { fallback = false, retryAfterMs }: { fallback?: boolean; retryAfterMs?: number } = {}) {
     super(message);
     this.name = 'GeminiError';
     this.status = status;
+    this.fallback = fallback;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -23,6 +31,8 @@ export interface ChatMessage {
 }
 
 export interface JsonRequest {
+  /** Decides which model handles the request (see models.ts). */
+  task: Task;
   system: string;
   messages: ChatMessage[];
   temperature?: number;
@@ -39,12 +49,16 @@ const MAX_ATTEMPTS = 3;
 const BASE_DELAY_MS = 1000;
 /** Longer server-requested waits (e.g. a used-up daily quota) are reported instead of waited out. */
 const MAX_AUTO_WAIT_MS = 15_000;
+const MODEL_UNAVAILABLE = /not found|no longer available|not supported|is not available/i;
 
 interface GeminiDeps {
   fetch?: typeof fetch;
   /** Injected so tests do not actually wait. */
   sleep?: (ms: number) => Promise<void>;
-  getSettings: () => Promise<{ apiKey: string; model: string }>;
+  now?: () => number;
+  getSettings: () => Promise<{ apiKey: string }>;
+  /** Models per task; defaults to TASK_MODELS. */
+  routes?: Readonly<Record<Task, readonly string[]>>;
 }
 
 /** Parse Google's "Please retry in 4h14m50.4s" hint from an error message. */
@@ -62,6 +76,9 @@ export function formatWait(ms: number): string {
   if (ms < 60_000) return `${Math.ceil(ms / 1000)} 秒`;
   return minutes < 60 ? `${minutes} 分鐘` : `${Math.floor(minutes / 60)} 小時 ${minutes % 60} 分`;
 }
+
+const quotaMessage = (models: readonly string[], waitMs: number) =>
+  `免費額度已用完（${models.join('、')}），約 ${formatWait(waitMs)}後重置，請稍後再試。`;
 
 /** Remove ```json fences some models add even in JSON mode. */
 export function parseJsonLoose(text: string): unknown {
@@ -92,11 +109,38 @@ function toContent(m: ChatMessage) {
 export function createGeminiClient({
   fetch: fetchImpl = globalThis.fetch,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  now = Date.now,
   getSettings,
+  routes = TASK_MODELS,
 }: GeminiDeps): JsonGenerator {
+  /** Models whose quota is used up, with the time it resets – skipped until then. */
+  const exhaustedUntil = new Map<string, number>();
+
+  /** One model, with short retries for transient overload / rate limiting. */
+  async function callModel(model: string, init: RequestInit): Promise<unknown> {
+    for (let attempt = 1; ; attempt++) {
+      const response = await fetchImpl(`${ENDPOINT}/${model}:generateContent`, init);
+      if (response.ok) return parseJsonLoose(extractText(await response.json()));
+
+      const detail = await response.json().then((j: any) => j?.error?.message as string | undefined, () => undefined);
+      const requestedWait = detail ? parseRetryDelayMs(detail) : undefined;
+      const wait = requestedWait ?? BASE_DELAY_MS * 2 ** (attempt - 1);
+      if (RETRYABLE.has(response.status) && attempt < MAX_ATTEMPTS && wait <= MAX_AUTO_WAIT_MS) {
+        await sleep(wait);
+        continue;
+      }
+      const message = detail || `Gemini request failed (${response.status})`;
+      if (response.status === 429 && requestedWait !== undefined) {
+        throw new GeminiError(quotaMessage([model], requestedWait), 429, { fallback: true, retryAfterMs: requestedWait });
+      }
+      const unavailable = response.status === 404 || ([400, 403].includes(response.status) && MODEL_UNAVAILABLE.test(message));
+      throw new GeminiError(message, response.status, { fallback: unavailable || RETRYABLE.has(response.status) });
+    }
+  }
+
   return {
-    async generateJson({ system, messages, temperature = 0.4 }) {
-      const { apiKey, model } = await getSettings();
+    async generateJson({ task, system, messages, temperature = 0.4 }) {
+      const { apiKey } = await getSettings();
       if (!apiKey) throw new GeminiError('Gemini API key is not set. Open the extension options.');
 
       const init: RequestInit = {
@@ -109,25 +153,25 @@ export function createGeminiClient({
         }),
       };
 
-      for (let attempt = 1; ; attempt++) {
-        const response = await fetchImpl(`${ENDPOINT}/${model}:generateContent`, init);
-        if (response.ok) return parseJsonLoose(extractText(await response.json()));
-
-        const detail = await response.json().then((j: any) => j?.error?.message as string | undefined, () => undefined);
-        const requestedWait = detail ? parseRetryDelayMs(detail) : undefined;
-        const wait = requestedWait ?? BASE_DELAY_MS * 2 ** (attempt - 1);
-        if (RETRYABLE.has(response.status) && attempt < MAX_ATTEMPTS && wait <= MAX_AUTO_WAIT_MS) {
-          await sleep(wait);
-          continue;
+      const models = routes[task];
+      const resetIn = (model: string) => (exhaustedUntil.get(model) ?? 0) - now();
+      let lastError: GeminiError | undefined;
+      for (const model of models) {
+        if (resetIn(model) > 0) continue;
+        try {
+          return await callModel(model, init);
+        } catch (error) {
+          if (!(error instanceof GeminiError) || !error.fallback) throw error;
+          if (error.retryAfterMs !== undefined) exhaustedUntil.set(model, now() + error.retryAfterMs);
+          lastError = error;
         }
-        if (response.status === 429 && requestedWait !== undefined) {
-          throw new GeminiError(
-            `免費額度已用完（${model}），約 ${formatWait(requestedWait)}後重置。可稍後再試，或到設定頁更換模型。`,
-            429,
-          );
-        }
-        throw new GeminiError(detail || `Gemini request failed (${response.status})`, response.status);
       }
+
+      // Every model failed or is known to be used up. If all are out of quota, say when the first resets.
+      if (models.every((m) => resetIn(m) > 0)) {
+        throw new GeminiError(quotaMessage(models, Math.min(...models.map(resetIn))), 429);
+      }
+      throw lastError ?? new GeminiError('No Gemini model available');
     },
   };
 }

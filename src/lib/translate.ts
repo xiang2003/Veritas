@@ -26,6 +26,7 @@ export async function translateParagraph(
   options: TranslateOptions,
 ): Promise<string> {
   const raw = (await client.generateJson({
+    task: 'translate',
     system: buildTranslateSystemPrompt(options),
     messages: [{ role: 'user', text }],
     temperature: 0.2,

@@ -90,7 +90,7 @@ export function createTutorSession(
 
   async function say(userText: string): Promise<TutorTurn> {
     const messages: ChatMessage[] = [...history, { role: 'user', text: userText }];
-    const turn = parseTutorTurn(await client.generateJson({ system, messages, temperature: 0.7 }));
+    const turn = parseTutorTurn(await client.generateJson({ task: 'tutor', system, messages, temperature: 0.7 }));
     // Only commit once the call succeeded, so a failure can simply be retried.
     history.push({ role: 'user', text: userText }, { role: 'model', text: turn.reply });
     return turn;

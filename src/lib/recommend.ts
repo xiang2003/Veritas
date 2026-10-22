@@ -67,6 +67,7 @@ export async function recommendHeadlines(
 ): Promise<Recommendation[]> {
   const candidates = headlines.slice(0, MAX_HEADLINES);
   const raw = await client.generateJson({
+    task: 'recommend',
     system: buildRecommendSystemPrompt(options),
     messages: [{ role: 'user', text: formatHeadlines(candidates) }],
     temperature: 0.3,

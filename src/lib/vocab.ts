@@ -92,6 +92,7 @@ export async function analyzeVocabulary(
   options: VocabOptions,
 ): Promise<VocabEntry[]> {
   const raw = await client.generateJson({
+    task: 'vocabulary',
     system: buildVocabSystemPrompt(options),
     messages: [{ role: 'user', text: `Title: ${article.title}\n\n${article.text}` }],
     temperature: 0.2,
@@ -123,6 +124,7 @@ export async function defineTerm(
   options: DefineOptions,
 ): Promise<VocabEntry> {
   const raw = await client.generateJson({
+    task: 'define',
     system: buildDefineSystemPrompt(options),
     messages: [{ role: 'user', text: `Selected: ${JSON.stringify(term)}\nPassage: ${JSON.stringify(context)}` }],
     temperature: 0.2,

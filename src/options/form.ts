@@ -16,7 +16,6 @@ export function readForm(form: HTMLFormElement): Partial<Settings> {
   const rate = Number(field('speechRate').value);
   return {
     apiKey: field('apiKey').value.trim(),
-    model: field('model').value.trim() || undefined,
     nativeLanguage: field('nativeLanguage').value.trim() || undefined,
     level: field('level').value,
     interests: field('interests').value.trim(),

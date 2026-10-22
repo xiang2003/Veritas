@@ -50,6 +50,7 @@ Add its pattern to `content_scripts[0].matches` in `static/manifest.json`. If ar
 
 ## Notes
 
-- Free-tier Gemini keys are rate-limited; results are cached per URL (100 articles).
+- Models are chosen per task (`src/lib/models.ts`): `gemini-3.8-flash` for vocabulary analysis, the tutor and speech transcription; `gemini-3.5-flash-lite` for translation, explanations and recommendations. Free-tier quotas are per model, so this also spreads the daily budget. When a model's quota is used up, it is overloaded or unavailable, the other model takes over; a used-up model is skipped until its quota resets.
+- Results are cached: vocabulary per article (100), translations and explanations (500 each), recommendations per page for 30 minutes, pronunciations (500).
 - Spoken answers are recorded in the side panel and cost two requests: a transcription call that sees only the audio, then the tutor call that sees only the transcript. Text-to-speech uses the browser's built-in voices.
 - Article text is sent to the Gemini API; nothing else leaves the browser. The API key is stored in `chrome.storage.local`.
