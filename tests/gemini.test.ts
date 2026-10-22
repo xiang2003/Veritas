@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createGeminiClient, formatWait, GeminiError, parseJsonLoose, parseRetryDelayMs } from '../src/lib/gemini.ts';
-import { BALANCED_MODEL, LIGHT_MODEL, QUALITY_MODEL, TASK_MODELS } from '../src/lib/models.ts';
+import { FLASH_3_5, FLASH_3_6, FLASH_3_8, FLASH_LITE_3_5, TASK_MODELS } from '../src/lib/models.ts';
 
 const settings = async () => ({ apiKey: 'KEY' });
 const ok = (text: string) =>
@@ -31,17 +31,17 @@ test('sends key header, model url and system instruction', async () => {
   assert.equal(body.contents[0].role, 'user');
 });
 
-test('each task goes to its model: quality for analysis and tutor, balanced for transcription, light for the rest', async () => {
+test('each main task leads with its own model; simple tasks use lite', async () => {
   const used: string[] = [];
-  const client = createGeminiClient({ getSettings: settings, fetch: async (url) => (used.push(modelOf(url)), ok('{}')) });
-  for (const task of ['vocabulary', 'tutor', 'transcribe', 'translate', 'define', 'recommend'] as const) {
-    await client.generateJson({ ...req, task });
-  }
-  assert.deepEqual(used, [QUALITY_MODEL, QUALITY_MODEL, BALANCED_MODEL, LIGHT_MODEL, LIGHT_MODEL, LIGHT_MODEL]);
-  // Every task can fall back to all three models.
-  for (const models of Object.values(TASK_MODELS)) {
-    assert.deepEqual([...models].sort(), [BALANCED_MODEL, LIGHT_MODEL, QUALITY_MODEL].sort());
-  }
+  const client = createGeminiClient({ getSettings: settings, log: () => {}, fetch: async (url) => (used.push(modelOf(url)), ok('{}')) });
+  const tasks = ['tutor', 'vocabulary', 'transcribe', 'translate', 'define', 'recommend', 'summarize'] as const;
+  for (const task of tasks) await client.generateJson({ ...req, task });
+  assert.deepEqual(used, [FLASH_3_8, FLASH_3_6, FLASH_3_5, FLASH_LITE_3_5, FLASH_LITE_3_5, FLASH_LITE_3_5, FLASH_LITE_3_5]);
+});
+
+test('every task can fall back to all four models, each listed once', () => {
+  const all = [FLASH_3_8, FLASH_3_6, FLASH_3_5, FLASH_LITE_3_5].sort();
+  for (const models of Object.values(TASK_MODELS)) assert.deepEqual([...models].sort(), all);
 });
 
 test('rejects when api key missing', async () => {

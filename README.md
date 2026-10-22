@@ -51,7 +51,7 @@ Add its pattern to `content_scripts[0].matches` in `static/manifest.json`. If ar
 
 ## Notes
 
-- Models are chosen per task (`src/lib/models.ts`): `gemini-3.8-flash` for vocabulary analysis and the tutor, `gemini-3.5-flash` for speech transcription (so a spoken turn uses two quotas), `gemini-3.5-flash-lite` for translation, explanations, recommendations and summaries. Free-tier quotas are per model, so this also spreads the daily budget. When a model's quota is used up, it is overloaded or unavailable, the next model takes over, one quality tier at a time; a used-up model is skipped until its quota resets.
+- Models are chosen per task (`src/lib/models.ts`), each main task leading with its own model so the per-model free quotas are spread: `gemini-3.8-flash` for the tutor, `gemini-3.6-flash` for vocabulary analysis, `gemini-3.5-flash` for speech transcription, `gemini-3.5-flash-lite` for translation, explanations, recommendations and summaries. When a model's quota is used up, it times out, is overloaded or unavailable, the next model takes over, nearest in quality first; a used-up model is skipped until its quota resets.
 - Results are cached: vocabulary per article (100), translations and explanations (500 each), recommendations per page for 30 minutes, summaries per article (100), pronunciations (500).
 - Spoken answers are recorded in the side panel and cost two requests: a transcription call that sees only the audio, then the tutor call that sees only the transcript. Text-to-speech uses the browser's built-in voices.
 - Article text is sent to the Gemini API; nothing else leaves the browser. The API key is stored in `chrome.storage.local`.
