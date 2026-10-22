@@ -84,6 +84,7 @@ $('#send-form').addEventListener('submit', (event) => {
   input.value = '';
 });
 $('#open-options').addEventListener('click', () => chrome.runtime.openOptionsPage());
+$('#open-wordbook').addEventListener('click', () => void chrome.tabs.create({ url: chrome.runtime.getURL('wordbook.html') }));
 
 const inThisWindow = async (windowId: number) => windowId === (await windowIdPromise);
 

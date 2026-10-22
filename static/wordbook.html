@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Veritas 生字本</title>
+  <link rel="stylesheet" href="shared.css" />
+  <link rel="stylesheet" href="wordbook.css" />
+</head>
+<body>
+  <main class="book">
+    <header>
+      <div>
+        <h1>📒 生字本</h1>
+        <div id="summary" class="muted"></div>
+      </div>
+      <button type="button" id="export" class="secondary">匯出 CSV</button>
+    </header>
+    <div class="controls">
+      <div class="tabs" role="tablist">
+        <button type="button" data-tab="learning" class="secondary">學習中</button>
+        <button type="button" data-tab="mastered" class="secondary">已熟悉</button>
+        <button type="button" data-tab="all" class="secondary">全部</button>
+      </div>
+      <input id="search" type="search" placeholder="搜尋單字或中文意思" autocomplete="off" />
+    </div>
+    <p class="muted hint">依查詢次數排序：查越多次的字越前面，代表越不熟。</p>
+    <section id="list"></section>
+  </main>
+  <script src="wordbook.js"></script>
+</body>
+</html>

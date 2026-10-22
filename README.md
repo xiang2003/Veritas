@@ -8,6 +8,7 @@ Veritas stays off until you click its toolbar icon: that opens the tutor side pa
 - **Per-paragraph tools** – every paragraph gets 🔊 (read aloud, click again to stop) and 譯 buttons on its right; click 譯 to see the translation below the paragraph (cached, click again to hide).
 - **Selection toolbar** – select any English text on an activated page to get 🔊 (human recording for single words, browser voice otherwise) and 譯 (translated in the sense used in its paragraph; one request, cached). For words and short phrases, 解釋 gives a full vocabulary card (meaning, definition, example, usage, Cambridge link) and underlines the term on the page – useful for anything the automatic analysis missed. Single words also show their dictionary IPA.
 - **What to read** – on a news front or section page, a panel opens bottom right (or click **✨ 推薦文章** if auto-recommend is off): Gemini picks the 5 stories most worth reading for your level and interests (set in Options), with a reason, estimated level and topic, and marks them ⭐ on the page. One request per click, cached for 30 minutes.
+- **Wordbook (生字本)** – every word you look up (card read for 1s, 🔊 played, or 解釋/譯 on a selected word) is recorded with its meaning and the sentence you met it in; a word counts once per page. Open it with 📒 in the side panel: words are sorted by how often you looked them up (your least familiar first), can be searched, played, marked 「我會了」 (looking one up again brings it back) or deleted, and exported to CSV for Anki. Stored only in your browser.
 - **Speaking tutor** – click the toolbar icon to open the side panel. Gemini has already read the article and opens the conversation itself with an easy question, guiding you step by step from what happened to your opinion, with 💡 sentence starters you can click to fill in; answer by voice or typing (your recording is transcribed verbatim by a separate, context-free Gemini call so the tutor's expectations cannot change what you said; it also flags mispronounced words). It answers aloud (text-to-speech), lists your mistakes with explanations, and shows a better way to say what you meant.
 
 ## Setup
@@ -38,6 +39,7 @@ src/content/     page side: extract → highlight → tooltip; front pages: head
 src/background/  service worker: Gemini calls for the content script, per-URL cache
 src/sidepanel/   controller (logic, fully tested) + view (DOM) + main (wiring)
 src/options/     settings form
+src/wordbook/    wordbook page: view (filter/render, tested) + main (wiring)
 ```
 
 Modules talk through small interfaces (`JsonGenerator`, `StorageLike`, `View`, `RecorderLike`…) and receive their dependencies by injection, so each is tested with fakes and no network or browser.

@@ -1,0 +1,26 @@
+.book { max-width: 760px; margin: 28px auto; padding: 0 16px; }
+.book header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.book h1 { margin: 0 0 4px; font-size: 22px; }
+.muted { color: var(--muted); font-size: 13px; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 18px 0 6px; }
+.controls input { flex: 1; min-width: 180px; }
+.tabs { display: flex; gap: 6px; }
+.tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.hint { margin: 0 0 14px; }
+#list { display: grid; gap: 12px; }
+.word { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.word.mastered { opacity: .7; }
+.word p { margin: 4px 0; }
+.word-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.term { font-size: 18px; }
+.count { margin-left: auto; padding: 1px 8px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; }
+.meaning { font-weight: 600; }
+.example { font-style: italic; }
+.context { color: var(--muted); font-size: 13px; }
+.context a, .dict { color: var(--accent); text-decoration: none; }
+.context a:hover, .dict:hover { text-decoration: underline; }
+.word-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.word-actions button { padding: 4px 10px; }
+.word-actions .muted { margin-left: auto; }
+.empty { color: var(--muted); text-align: center; padding: 40px 0; }
+@media (prefers-color-scheme: dark) { .context a, .dict { color: #a5b4fc; } }

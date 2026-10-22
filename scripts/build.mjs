@@ -12,6 +12,7 @@ const entries = [
   { entryPoints: ['src/content/main.ts'], outfile: 'dist/content.js', format: 'iife' },
   { entryPoints: ['src/sidepanel/main.ts'], outfile: 'dist/sidepanel.js', format: 'iife' },
   { entryPoints: ['src/options/main.ts'], outfile: 'dist/options.js', format: 'iife' },
+  { entryPoints: ['src/wordbook/main.ts'], outfile: 'dist/wordbook.js', format: 'iife' },
 ];
 
 for (const entry of entries) {
