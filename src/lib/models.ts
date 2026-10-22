@@ -1,5 +1,5 @@
 /** What a Gemini request is for; each task is routed to the model that suits it. */
-export type Task = 'vocabulary' | 'tutor' | 'transcribe' | 'translate' | 'define' | 'recommend';
+export type Task = 'vocabulary' | 'tutor' | 'transcribe' | 'translate' | 'define' | 'recommend' | 'summarize';
 
 export const QUALITY_MODEL = 'gemini-3.8-flash';
 export const BALANCED_MODEL = 'gemini-3.5-flash';
@@ -21,4 +21,5 @@ export const TASK_MODELS: Readonly<Record<Task, readonly string[]>> = {
   translate: [LIGHT_MODEL, BALANCED_MODEL, QUALITY_MODEL],
   define: [LIGHT_MODEL, BALANCED_MODEL, QUALITY_MODEL],
   recommend: [LIGHT_MODEL, BALANCED_MODEL, QUALITY_MODEL],
+  summarize: [LIGHT_MODEL, BALANCED_MODEL, QUALITY_MODEL],
 };

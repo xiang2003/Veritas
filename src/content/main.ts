@@ -4,6 +4,7 @@ import type {
   DefineResponse,
   PronounceResponse,
   RecommendResponse,
+  SummarizeResponse,
   Request,
   TranslateResponse,
 } from '../lib/messages.ts';
@@ -18,6 +19,7 @@ import { createPronouncer, playAudioUrl } from './pronounce.ts';
 import { createRecommendPanel, markPickedLinks } from './recommend-ui.ts';
 import { blockText, createSelectionPopup, isSingleWord } from './selection.ts';
 import { injectStyles } from './styles.ts';
+import { createSummarySection } from './summary-ui.ts';
 import { showToast } from './toast.ts';
 import { createTooltip } from './tooltip.ts';
 import type { VocabEntry } from '../lib/types.ts';
@@ -150,8 +152,19 @@ async function main(): Promise<void> {
     stop: () => tts.stop(),
   });
 
+  const summary = createSummarySection(root, {
+    load: async () => {
+      const res = await send<SummarizeResponse>({ type: 'summarize', article: data });
+      if (!res.ok) throw new Error(res.error);
+      return res.summary;
+    },
+    speak: (text) => tts.speak(text, speechRate),
+    stop: () => tts.stop(),
+  });
+
   const apply = () => {
     paragraphTools.attach(root);
+    summary.attach();
     highlightTerms(root, [...vocabulary.values()]);
   };
   apply();

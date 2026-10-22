@@ -1,5 +1,6 @@
 import type { Pronunciation } from './dictionary.ts';
 import type { Headline, Recommendation } from './recommend.ts';
+import type { ArticleSummary } from './summary.ts';
 import type { ArticleData, VocabEntry } from './types.ts';
 import type { WordContext } from './wordbook.ts';
 
@@ -62,20 +63,30 @@ export interface RecordLookupRequest {
 
 export type RecordLookupResponse = { ok: true } | { ok: false; error: string };
 
+/** Content script -> background: summarise the article. */
+export interface SummarizeRequest {
+  type: 'summarize';
+  article: ArticleData;
+}
+
+export type SummarizeResponse = { ok: true; summary: ArticleSummary } | { ok: false; error: string };
+
 export type Request =
   | AnalyzeRequest
   | TranslateRequest
   | RecommendRequest
   | PronounceRequest
   | DefineRequest
-  | RecordLookupRequest;
+  | RecordLookupRequest
+  | SummarizeRequest;
 export type Response =
   | AnalyzeResponse
   | TranslateResponse
   | RecommendResponse
   | PronounceResponse
   | DefineResponse
-  | RecordLookupResponse;
+  | RecordLookupResponse
+  | SummarizeResponse;
 
 /** Side panel -> content script: turn Veritas on for this tab. */
 export interface ActivateMessage {

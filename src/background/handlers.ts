@@ -7,6 +7,7 @@ import {
   type PronounceResponse,
   type RecordLookupRequest,
   type RecordLookupResponse,
+  type SummarizeResponse,
   type RecommendRequest,
   type RecommendResponse,
   type Request,
@@ -17,6 +18,7 @@ import {
 import { recommendHeadlines, type Recommendation } from '../lib/recommend.ts';
 import { lookupPronunciation, type Pronunciation } from '../lib/dictionary.ts';
 import { createLruCache } from '../lib/lru-cache.ts';
+import { summarizeArticle, type ArticleSummary } from '../lib/summary.ts';
 import { translateParagraph } from '../lib/translate.ts';
 import type { Settings, StorageLike } from '../lib/settings.ts';
 import type { ArticleData, VocabEntry } from '../lib/types.ts';
@@ -28,6 +30,7 @@ const MAX_CACHED_TRANSLATIONS = 500;
 const MAX_CACHED_PAGES = 30;
 const MAX_CACHED_PRONUNCIATIONS = 500;
 const MAX_CACHED_DEFINITIONS = 500;
+const MAX_CACHED_SUMMARIES = 100;
 /** Bump when the vocabulary prompt/validation changes so old cached analyses are redone. */
 const VOCAB_VERSION = 2;
 /** Front pages change through the day, so recommendations expire. */
@@ -75,6 +78,11 @@ export function createHandlers({
   const translationCache = createLruCache<string>(cache, { prefix: 'tr:', indexKey: 'trIndex', max: MAX_CACHED_TRANSLATIONS });
   const picksCache = createLruCache<CachedPicks>(cache, { prefix: 'rec:', indexKey: 'recIndex', max: MAX_CACHED_PAGES });
   const wordbook = createWordbook(cache, now);
+  const summaryCache = createLruCache<{ signature: string; summary: ArticleSummary }>(cache, {
+    prefix: 'sum:',
+    indexKey: 'sumIndex',
+    max: MAX_CACHED_SUMMARIES,
+  });
   const definitionCache = createLruCache<VocabEntry>(cache, { prefix: 'def:', indexKey: 'defIndex', max: MAX_CACHED_DEFINITIONS });
   // Unknown words are cached too ({ found: null }) so they are not looked up again.
   const pronunciationCache = createLruCache<{ found: Pronunciation | null }>(cache, {
@@ -146,6 +154,20 @@ export function createHandlers({
     }
   }
 
+  async function summarize(article: ArticleData): Promise<SummarizeResponse> {
+    try {
+      const settings = await getSettings();
+      const signature = `${settings.level}|${settings.nativeLanguage}`;
+      const hit = await summaryCache.get(article.url);
+      if (hit && hit.signature === signature) return { ok: true, summary: hit.summary };
+      const summary = await summarizeArticle(client, article, settings);
+      await summaryCache.set(article.url, { signature, summary });
+      return { ok: true, summary };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   async function recordLookup({ entry, context, count }: RecordLookupRequest): Promise<RecordLookupResponse> {
     try {
       await wordbook.record(entry, context, { count });
@@ -183,6 +205,8 @@ export function createHandlers({
           return define(message);
         case 'record-lookup':
           return recordLookup(message);
+        case 'summarize':
+          return summarize(message.article);
         default:
           return undefined;
       }

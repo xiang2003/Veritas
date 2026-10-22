@@ -11,7 +11,7 @@ const failing = (status: number, message = `E${status}`) =>
 const quota = (retry: string) => failing(429, `Quota exceeded. Please retry in ${retry}.`);
 const req = { task: 'tutor' as const, system: 'sys', messages: [{ role: 'user' as const, text: 'hi' }] };
 /** Single-model routes keep the retry tests independent of the fallback logic. */
-const single = { vocabulary: ['m1'], tutor: ['m1'], transcribe: ['m1'], translate: ['m1'], define: ['m1'], recommend: ['m1'] };
+const single = { vocabulary: ['m1'], tutor: ['m1'], transcribe: ['m1'], translate: ['m1'], define: ['m1'], recommend: ['m1'], summarize: ['m1'] };
 const pair = { ...single, tutor: ['main', 'backup'] };
 const modelOf = (url: unknown) => /models\/([^:]+):/.exec(String(url))![1]!;
 const noWait = async () => {};

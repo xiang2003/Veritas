@@ -1,6 +1,7 @@
 import { TERM_CLASS } from './highlighter.ts';
 import { BUTTON_CLASS, PANEL_CLASS, TOOLS_CLASS } from './paragraphs.ts';
 import { PICK_BADGE_CLASS } from './recommend-ui.ts';
+import { SUMMARY_CLASS } from './summary-ui.ts';
 
 const CSS = `
 .${TERM_CLASS} { text-decoration: underline; text-decoration-style: dotted;
@@ -15,7 +16,21 @@ p:hover > .${TOOLS_CLASS}, .${TOOLS_CLASS}:focus-within { opacity: 1; }
   background: rgba(79, 70, 229, .08); color: inherit; font: 15px/1.6 system-ui, "Noto Sans TC", sans-serif; }
 .${PANEL_CLASS}[hidden] { display: none; }
 .${PICK_BADGE_CLASS} { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 999px; vertical-align: middle;
-  background: #4f46e5; color: #fff; font: 600 11px/18px system-ui, "Noto Sans TC", sans-serif; text-decoration: none; }`;
+  background: #4f46e5; color: #fff; font: 600 11px/18px system-ui, "Noto Sans TC", sans-serif; text-decoration: none; }
+.${SUMMARY_CLASS} { clear: both; margin: 28px 0; padding: 16px 18px; border: 1px solid #c7c9f5; border-left: 4px solid #4f46e5;
+  border-radius: 10px; background: rgba(79, 70, 229, .05); color: inherit; font: 16px/1.6 system-ui, "Noto Sans TC", sans-serif; }
+.${SUMMARY_CLASS} .veritas-summary-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.${SUMMARY_CLASS} .veritas-summary-head strong { font-size: 17px; }
+.${SUMMARY_CLASS} .veritas-btn { height: auto; padding: 3px 10px; }
+.${SUMMARY_CLASS} .veritas-btn[hidden] { display: none; }
+.${SUMMARY_CLASS} p, .${SUMMARY_CLASS} ul { margin: 10px 0 0; }
+.${SUMMARY_CLASS} ul { padding-left: 22px; }
+.${SUMMARY_CLASS} li { margin: 4px 0; }
+.${SUMMARY_CLASS} .veritas-summary-gist { font-weight: 600; }
+.${SUMMARY_CLASS} .veritas-summary-actions { display: flex; gap: 6px; margin-top: 12px; }
+.${SUMMARY_CLASS} .veritas-summary-translation { padding-top: 10px; border-top: 1px dashed #c7c9f5; }
+.${SUMMARY_CLASS} .veritas-summary-translation[hidden] { display: none; }
+.${SUMMARY_CLASS} .veritas-summary-status { opacity: .8; }`;
 
 const STYLE_ID = 'veritas-styles';
 
