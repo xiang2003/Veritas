@@ -76,3 +76,12 @@ test('defineTerm keeps the selected text as the term and requires a meaning', as
   assert.match(sent.messages[0]!.text, /Passage: "It was a red herring\."/);
   await assert.rejects(defineTerm({ generateJson: async () => ({}) }, 'x', 'x', { level: 'B2', nativeLanguage: 'X' }), /No explanation/);
 });
+
+test('findSurfaceForm accepts regular inflections only', () => {
+  const t = 'They are teasing him; prices applied; it stopped; the artist quelled it.';
+  assert.equal(findSurfaceForm(t, 'tease'), 'teasing');
+  assert.equal(findSurfaceForm(t, 'apply'), 'applied');
+  assert.equal(findSurfaceForm(t, 'stop'), 'stopped');
+  assert.equal(findSurfaceForm(t, 'quell'), 'quelled');
+  assert.equal(findSurfaceForm(t, 'art'), null);
+});

@@ -9,6 +9,7 @@ import {
   type RecordLookupResponse,
   type RecordMistakesRequest,
   type RecordMistakesResponse,
+  type RecordPracticeResponse,
   type SummarizeResponse,
   type RecommendRequest,
   type RecommendResponse,
@@ -181,6 +182,15 @@ export function createHandlers({
     }
   }
 
+  async function recordPractice(keys: string[]): Promise<RecordPracticeResponse> {
+    try {
+      await wordbook.markUsed(keys);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   async function recordLookup({ entry, context, count }: RecordLookupRequest): Promise<RecordLookupResponse> {
     try {
       await wordbook.record(entry, context, { count });
@@ -222,6 +232,8 @@ export function createHandlers({
           return summarize(message.article);
         case 'record-mistakes':
           return recordMistakes(message);
+        case 'record-practice':
+          return recordPractice(message.keys);
         default:
           return undefined;
       }

@@ -1,4 +1,5 @@
 import type { AudioClip, ChatMessage, JsonGenerator } from './gemini.ts';
+import { findUsedWords, type PracticeWord } from './practice.ts';
 import { INAUDIBLE, transcribeSpeech } from './transcribe.ts';
 import type { ArticleData } from './types.ts';
 
@@ -23,6 +24,8 @@ export interface TutorTurn {
   praise: string;
   /** Up to 3 sentence starters / useful phrases that help the learner answer the new question. */
   hints: string[];
+  /** Practice words the learner used in this answer (filled in by the session). */
+  usedWords: string[];
 }
 
 export interface TutorOptions {
@@ -35,7 +38,22 @@ export const START_SIGNAL = '[START]';
 /** Marks learner messages that came from speech-to-text rather than typing. */
 export const SPOKEN_PREFIX = '[spoken] ';
 
-export function buildTutorSystemPrompt(article: ArticleData, { level, nativeLanguage }: TutorOptions): string {
+/** Prompt section asking the tutor to get the learner to use words they recently looked up. */
+export function practiceSection(words: PracticeWord[]): string {
+  if (!words.length) return '';
+  const list = words.map((w) => (w.meaning ? `${w.word} (${w.meaning})` : w.word)).join(', ');
+  return `
+WORDS TO PRACTISE – the learner looked these up recently: ${list}
+- About every other question, make it natural to use one of these words and ask for it explicitly in "reply" (e.g. Try to use "${words[0]!.word}" in your answer.), and make one of the "hints" a sentence starter that uses that word.
+- When the learner uses one of these words correctly, praise that specifically; if they use it wrongly, correct it.
+`;
+}
+
+export function buildTutorSystemPrompt(
+  article: ArticleData,
+  { level, nativeLanguage }: TutorOptions,
+  practiceWords: PracticeWord[] = [],
+): string {
   return `You are a friendly English speaking coach. The learner (CEFR ${level}, native language: ${nativeLanguage}) just read this news article and wants to discuss it out loud. Their answers are typed, or are speech transcripts prefixed with ${JSON.stringify(SPOKEN_PREFIX.trim())}.
 
 ARTICLE
@@ -53,7 +71,7 @@ RULES
 - Analyse the learner's last answer: list real grammar, word-choice or unnatural-phrasing mistakes in "corrections" (max 3, most important first; explanations in ${nativeLanguage}). Do not invent mistakes; use [] if it was fine.
 - "betterAnswer": rewrite what the learner said as a fluent, natural ${level}+ speaker would, reusing their ideas and, where fitting, vocabulary from the article.
 - "praise": one short encouraging sentence in English.
-
+${practiceSection(practiceWords)}
 Respond ONLY as JSON: {"reply": string, "corrections": [{"original": string, "corrected": string, "explanation": string}], "betterAnswer": string, "praise": string, "hints": [string]}`;
 }
 
@@ -75,6 +93,7 @@ export function parseTutorTurn(raw: unknown): TutorTurn {
     pronunciation: '',
     praise: text(obj.praise),
     hints: (Array.isArray(obj.hints) ? obj.hints : []).map(text).filter(Boolean).slice(0, 3),
+    usedWords: [],
   };
 }
 
@@ -84,9 +103,11 @@ export function createTutorSession(
   article: ArticleData,
   options: TutorOptions,
   initialHistory: ChatMessage[] = [],
+  practiceWords: PracticeWord[] = [],
 ) {
   const history: ChatMessage[] = [...initialHistory];
-  const system = buildTutorSystemPrompt(article, options);
+  const system = buildTutorSystemPrompt(article, options, practiceWords);
+  const used = (said: string) => findUsedWords(said, practiceWords).map((w) => w.word);
 
   async function say(userText: string): Promise<TutorTurn> {
     const messages: ChatMessage[] = [...history, { role: 'user', text: userText }];
@@ -99,7 +120,7 @@ export function createTutorSession(
   return {
     start: () => say(START_SIGNAL),
     async send(userText: string): Promise<TutorTurn> {
-      return { ...(await say(userText)), transcript: userText };
+      return { ...(await say(userText)), transcript: userText, usedWords: used(userText) };
     },
     /**
      * Spoken answer: first a separate, context-free transcription (so the tutor's expectations cannot
@@ -109,7 +130,7 @@ export function createTutorSession(
       const { transcript, pronunciation } = await transcribeSpeech(client, audio, options);
       if (!transcript) throw new Error('沒有聽清楚你說的話，請再說一次。');
       const turn = await say(SPOKEN_PREFIX + transcript);
-      return { ...turn, transcript, pronunciation };
+      return { ...turn, transcript, pronunciation, usedWords: used(transcript) };
     },
     get length() {
       return history.length;

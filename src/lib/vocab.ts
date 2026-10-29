@@ -31,13 +31,27 @@ export function termPattern(term: string): string {
 }
 
 /**
+ * Regex source for a single word plus its regular English inflections (quell → quelled, tease →
+ * teasing, apply → applied, stop → stopped) – but not other words that merely start with it
+ * (art ↛ artist).
+ */
+function inflectedPattern(word: string): string {
+  const key = termKey(word);
+  const forms = [`${termPattern(key)}(?:s|es|d|ed|ing|er|est)?`];
+  if (key.endsWith('e')) forms.push(`${termPattern(key.slice(0, -1))}(?:ing|ed|er|est)`);
+  if (/[^aeiou]y$/.test(key)) forms.push(`${termPattern(key.slice(0, -1))}(?:ies|ied|ier|iest)`);
+  if (/[^aeiou][aeiou][bdgklmnprt]$/.test(key)) forms.push(`${termPattern(key)}${key.at(-1)}(?:ed|ing|er|est)`);
+  return `(?:${forms.join('|')})`;
+}
+
+/**
  * Find how a term actually appears in the article. Single words may carry an inflection the
  * model dropped (lemma "beleaguer" → "beleaguered"). Returns the text as written, or null.
  */
 export function findSurfaceForm(articleText: string, term: string): string | null {
   if (!term.trim()) return null;
-  const suffix = /\s/.test(term.trim()) ? '' : '[a-z]{0,4}';
-  const match = new RegExp(`${TERM_START}${termPattern(term)}${suffix}${TERM_END}`, 'i').exec(articleText);
+  const body = /\s/.test(term.trim()) ? termPattern(term) : inflectedPattern(term);
+  const match = new RegExp(`${TERM_START}${body}${TERM_END}`, 'i').exec(articleText);
   return match ? match[0] : null;
 }
 

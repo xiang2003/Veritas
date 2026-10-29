@@ -82,6 +82,14 @@ export interface RecordMistakesRequest {
 
 export type RecordMistakesResponse = { ok: true } | { ok: false; error: string };
 
+/** Side panel -> background: the learner used these wordbook words (by key) in a conversation. */
+export interface RecordPracticeRequest {
+  type: 'record-practice';
+  keys: string[];
+}
+
+export type RecordPracticeResponse = { ok: true } | { ok: false; error: string };
+
 export type Request =
   | AnalyzeRequest
   | TranslateRequest
@@ -90,7 +98,8 @@ export type Request =
   | DefineRequest
   | RecordLookupRequest
   | SummarizeRequest
-  | RecordMistakesRequest;
+  | RecordMistakesRequest
+  | RecordPracticeRequest;
 export type Response =
   | AnalyzeResponse
   | TranslateResponse
@@ -99,7 +108,8 @@ export type Response =
   | DefineResponse
   | RecordLookupResponse
   | SummarizeResponse
-  | RecordMistakesResponse;
+  | RecordMistakesResponse
+  | RecordPracticeResponse;
 
 /** Content script -> background, during a user gesture: open the tutor side panel. */
 export interface OpenPanelMessage {

@@ -1,11 +1,13 @@
 import { createGeminiClient } from '../lib/gemini.ts';
-import { articleKey, type ActivateMessage, type RecordMistakesRequest } from '../lib/messages.ts';
+import { articleKey, type ActivateMessage, type RecordMistakesRequest, type RecordPracticeRequest } from '../lib/messages.ts';
 import { createSettings, DEFAULT_SETTINGS, type Settings } from '../lib/settings.ts';
 import { createRecorder } from '../lib/recorder.ts';
 import { createTts } from '../lib/speech.ts';
 import { createTutorSession } from '../lib/tutor.ts';
 import type { ArticleData } from '../lib/types.ts';
 import { createConversationStore } from '../lib/conversations.ts';
+import { pickPracticeWords, type PracticeWord } from '../lib/practice.ts';
+import { createWordbook } from '../lib/wordbook.ts';
 import { createController, type SavedConversation } from './controller.ts';
 import { createView } from './view.ts';
 
@@ -15,6 +17,9 @@ const settings = createSettings(chrome.storage.local);
 const client = createGeminiClient({ getSettings: settings.get });
 
 let latestSettings: Settings = DEFAULT_SETTINGS;
+/** Recently looked-up words the tutor should get the learner to use (refreshed per article). */
+let practiceWords: PracticeWord[] = [];
+const wordbook = createWordbook(chrome.storage.local); // read-only here; the background writes it
 let currentUrl: string | undefined;
 let rate = 1;
 let replay: (text: string) => void = () => {};
@@ -33,7 +38,7 @@ const conversationStore = createConversationStore<SavedConversation>(chrome.stor
 
 const controller = createController({
   // Level/language are read when a session is created (refresh() loads the latest settings first).
-  createSession: (article, history) => createTutorSession(client, article, latestSettings, history),
+  createSession: (article, history) => createTutorSession(client, article, latestSettings, history, practiceWords),
   store: conversationStore,
   recorder: createRecorder(),
   tts: createTts({ synth: speechSynthesis, createUtterance: (t) => new SpeechSynthesisUtterance(t) }),
@@ -41,6 +46,11 @@ const controller = createController({
   getRate: () => rate,
   autoStart: () => Boolean(latestSettings.apiKey),
   onLearnerTurn: (turn, article) => {
+    const usedKeys = practiceWords.filter((w) => turn.usedWords.includes(w.word)).map((w) => w.key);
+    if (usedKeys.length) {
+      const practice: RecordPracticeRequest = { type: 'record-practice', keys: usedKeys };
+      chrome.runtime.sendMessage(practice).catch(() => {});
+    }
     if (!turn.corrections.length) return;
     const request: RecordMistakesRequest = {
       type: 'record-mistakes',
@@ -75,6 +85,9 @@ async function refresh(): Promise<void> {
   const article = await loadActiveArticle();
   if (article?.url === currentUrl) return; // same article: keep the conversation going
   currentUrl = article?.url;
+  if (article) {
+    practiceWords = pickPracticeWords(await wordbook.list(), { now: Date.now(), articleUrl: article.url });
+  }
   await controller.setArticle(article);
   if (article && !latestSettings.apiKey) view.showError('Add your Gemini API key in the extension options.');
 }

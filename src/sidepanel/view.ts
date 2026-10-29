@@ -43,8 +43,10 @@ export function createView(doc: Document, parts: ViewParts, onReplay: (text: str
   let thinkingTimer: ReturnType<typeof setInterval> | undefined;
 
   function feedbackCard(turn: TutorTurn): HTMLElement | null {
-    if (!turn.corrections.length && !turn.betterAnswer && !turn.pronunciation) return null;
+    const usedWords = turn.usedWords ?? []; // older saved turns have none
+    if (!turn.corrections.length && !turn.betterAnswer && !turn.pronunciation && !usedWords.length) return null;
     const card = el(doc, 'section', 'feedback');
+    if (usedWords.length) card.append(el(doc, 'p', 'used-words', `✓ 用上了生字：${usedWords.join('、')}`));
     if (turn.praise) card.append(el(doc, 'p', 'praise', turn.praise));
     for (const c of turn.corrections) {
       const item = el(doc, 'div', 'correction');

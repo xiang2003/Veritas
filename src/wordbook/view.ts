@@ -49,7 +49,7 @@ export function renderRecord(doc: Document, r: WordRecord, actions: RowActions):
   head.append(el(doc, 'strong', 'term', r.lemma));
   if (r.ipa) head.append(el(doc, 'span', 'muted', r.ipa));
   if (r.pos) head.append(el(doc, 'span', 'muted', r.pos));
-  head.append(el(doc, 'span', 'count', `查了 ${r.lookups} 次`));
+  head.append(el(doc, 'span', 'count', `查了 ${r.lookups} 次${r.uses ? ` · 用過 ${r.uses} 次` : ''}`));
   card.append(head);
 
   if (r.meaning) card.append(el(doc, 'p', 'meaning', r.meaning));

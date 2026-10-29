@@ -15,7 +15,7 @@ const article = { url: 'u', title: 'Title', text: 'text' };
 const other = { url: 'v', title: 'Other', text: 'text' };
 const clip = { mimeType: 'audio/webm', data: 'AAA' };
 const turn = (reply: string, transcript = ''): TutorTurn => ({
-  transcript, reply, corrections: [], betterAnswer: '', pronunciation: '', praise: '', hints: [],
+  transcript, reply, corrections: [], betterAnswer: '', pronunciation: '', praise: '', hints: [], usedWords: [],
 });
 const tick = () => new Promise((r) => setImmediate(r));
 

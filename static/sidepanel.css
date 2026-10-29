@@ -13,6 +13,7 @@ header { display: flex; justify-content: space-between; align-items: center; gap
 .feedback p { margin: 2px 0; }
 .feedback del { color: #dc2626; }
 .feedback ins { color: #16a34a; text-decoration: none; font-weight: 600; }
+.feedback .used-words { color: #16a34a; font-weight: 600; }
 .feedback .why, .feedback .praise, .feedback .pron { color: var(--muted); }
 .correction { margin-bottom: 6px; }
 .better { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); }

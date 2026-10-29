@@ -31,6 +31,8 @@ export interface WordRecord {
   mastered: boolean;
   /** Most recent first. */
   contexts: WordContext[];
+  /** Times the learner used the word in a tutor conversation (absent on older records). */
+  uses?: number;
 }
 
 type Book = Record<string, WordRecord>;
@@ -108,6 +110,11 @@ export function createWordbook(area: StorageLike, now: () => number = Date.now) 
     async list(): Promise<WordRecord[]> {
       return sortRecords(Object.values(await doc.read()));
     },
+    /** The learner used these words (by key) in a conversation. Unknown keys are ignored. */
+    markUsed: (keys: string[]) =>
+      change((book) => {
+        for (const key of keys) if (book[key]) book[key] = { ...book[key], uses: (book[key].uses ?? 0) + 1 };
+      }),
     setMastered: (key: string, mastered: boolean) =>
       change((book) => {
         if (book[key]) book[key] = { ...book[key], mastered };
