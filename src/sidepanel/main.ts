@@ -5,7 +5,8 @@ import { createRecorder } from '../lib/recorder.ts';
 import { createTts } from '../lib/speech.ts';
 import { createTutorSession } from '../lib/tutor.ts';
 import type { ArticleData } from '../lib/types.ts';
-import { createController, type ConversationStore, type SavedConversation } from './controller.ts';
+import { createConversationStore } from '../lib/conversations.ts';
+import { createController, type SavedConversation } from './controller.ts';
 import { createView } from './view.ts';
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
@@ -27,14 +28,8 @@ const view = createView(
   (text) => replay(text),
 );
 
-/** Conversations live in session storage: they survive tab switches and closing the panel, not a browser restart. */
-const conversationStore: ConversationStore = {
-  async load(url) {
-    const key = `conv:${url}`;
-    return ((await chrome.storage.session.get(key))[key] as SavedConversation | undefined) ?? null;
-  },
-  save: (url, conversation) => chrome.storage.session.set({ [`conv:${url}`]: conversation }),
-};
+/** Conversations are kept permanently (last 50 articles), so they survive closing the browser. */
+const conversationStore = createConversationStore<SavedConversation>(chrome.storage.local);
 
 const controller = createController({
   // Level/language are read when a session is created (refresh() loads the latest settings first).
