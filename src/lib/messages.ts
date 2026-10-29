@@ -1,6 +1,8 @@
 import type { Pronunciation } from './dictionary.ts';
 import type { Headline, Recommendation } from './recommend.ts';
+import type { MistakeSource } from './mistakes.ts';
 import type { ArticleSummary } from './summary.ts';
+import type { Correction } from './tutor.ts';
 import type { ArticleData, VocabEntry } from './types.ts';
 import type { WordContext } from './wordbook.ts';
 
@@ -71,6 +73,15 @@ export interface SummarizeRequest {
 
 export type SummarizeResponse = { ok: true; summary: ArticleSummary } | { ok: false; error: string };
 
+/** Side panel -> background: corrections from one learner answer, for the mistakes book. */
+export interface RecordMistakesRequest {
+  type: 'record-mistakes';
+  corrections: Correction[];
+  source: MistakeSource;
+}
+
+export type RecordMistakesResponse = { ok: true } | { ok: false; error: string };
+
 export type Request =
   | AnalyzeRequest
   | TranslateRequest
@@ -78,7 +89,8 @@ export type Request =
   | PronounceRequest
   | DefineRequest
   | RecordLookupRequest
-  | SummarizeRequest;
+  | SummarizeRequest
+  | RecordMistakesRequest;
 export type Response =
   | AnalyzeResponse
   | TranslateResponse
@@ -86,7 +98,8 @@ export type Response =
   | PronounceResponse
   | DefineResponse
   | RecordLookupResponse
-  | SummarizeResponse;
+  | SummarizeResponse
+  | RecordMistakesResponse;
 
 /** Content script -> background, during a user gesture: open the tutor side panel. */
 export interface OpenPanelMessage {

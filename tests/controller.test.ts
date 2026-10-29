@@ -235,3 +235,27 @@ test('autoStart off (e.g. no API key) waits for the start button', async () => {
   await s.controller.setArticle(article);
   assert.ok(!s.log.some((l) => l.startsWith('tutor:')));
 });
+
+test('every answered learner turn is reported with its article and whether it was spoken', async () => {
+  const reports: string[] = [];
+  const controller = createController({
+    createSession: () => ({
+      history: [],
+      start: async () => turn('Q1'),
+      send: async (t) => turn('ok', t),
+      sendAudio: async () => turn('ok', 'spoken words'),
+    }),
+    store: { load: async () => null, save: async () => {} },
+    recorder: { start: (h) => h.onClip({ mimeType: 'audio/webm', data: 'A' }), stop() {} },
+    tts: { speak: async () => {}, stop() {} },
+    view: { setPhase() {}, setArticleTitle() {}, clearConversation() {}, addUserMessage() {}, addTutorTurn() {}, showError() {} },
+    getRate: () => 1,
+    onLearnerTurn: (t, a, spoken) => void reports.push(`${t.transcript}|${a.title}|${spoken}`),
+  });
+  await controller.setArticle(article);
+  await controller.start(); // the tutor's own opening is not a learner turn
+  await controller.submitText('typed answer');
+  controller.toggleMic();
+  await tick();
+  assert.deepEqual(reports, ['typed answer|Title|false', 'spoken words|Title|true']);
+});

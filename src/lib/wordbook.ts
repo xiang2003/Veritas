@@ -1,3 +1,4 @@
+import { createJsonDoc } from './json-doc.ts';
 import type { StorageLike } from './settings.ts';
 import type { VocabEntry } from './types.ts';
 import { termKey } from './vocab.ts';
@@ -66,23 +67,12 @@ export function toCsv(records: WordRecord[]): string {
 }
 
 /**
- * Persistent record of the words the learner looks up. All changes go through one queue so
- * lookups from several tabs at once cannot overwrite each other (read-modify-write on one key).
+ * Persistent record of the words the learner looks up (one queued JSON document, so lookups from
+ * several tabs at once are all counted).
  */
 export function createWordbook(area: StorageLike, now: () => number = Date.now) {
-  let queue: Promise<unknown> = Promise.resolve();
-  const read = async (): Promise<Book> => ((await area.get([STORAGE_KEY]))[STORAGE_KEY] as Book | undefined) ?? {};
-
-  function change<T>(mutate: (book: Book) => T): Promise<T> {
-    const run = queue.then(async () => {
-      const book = await read();
-      const result = mutate(book);
-      await area.set({ [STORAGE_KEY]: book });
-      return result;
-    });
-    queue = run.catch(() => {});
-    return run;
-  }
+  const doc = createJsonDoc<Book>(area, STORAGE_KEY, () => ({}));
+  const change = doc.change;
 
   return {
     /**
@@ -116,8 +106,7 @@ export function createWordbook(area: StorageLike, now: () => number = Date.now) 
       });
     },
     async list(): Promise<WordRecord[]> {
-      await queue;
-      return sortRecords(Object.values(await read()));
+      return sortRecords(Object.values(await doc.read()));
     },
     setMastered: (key: string, mastered: boolean) =>
       change((book) => {

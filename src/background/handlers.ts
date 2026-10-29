@@ -7,6 +7,8 @@ import {
   type PronounceResponse,
   type RecordLookupRequest,
   type RecordLookupResponse,
+  type RecordMistakesRequest,
+  type RecordMistakesResponse,
   type SummarizeResponse,
   type RecommendRequest,
   type RecommendResponse,
@@ -24,6 +26,7 @@ import type { Settings, StorageLike } from '../lib/settings.ts';
 import type { ArticleData, VocabEntry } from '../lib/types.ts';
 import { analyzeVocabulary, defineTerm, termKey } from '../lib/vocab.ts';
 import { createWordbook } from '../lib/wordbook.ts';
+import { createMistakebook } from '../lib/mistakes.ts';
 
 const MAX_CACHED_ARTICLES = 100;
 const MAX_CACHED_TRANSLATIONS = 500;
@@ -78,6 +81,7 @@ export function createHandlers({
   const translationCache = createLruCache<string>(cache, { prefix: 'tr:', indexKey: 'trIndex', max: MAX_CACHED_TRANSLATIONS });
   const picksCache = createLruCache<CachedPicks>(cache, { prefix: 'rec:', indexKey: 'recIndex', max: MAX_CACHED_PAGES });
   const wordbook = createWordbook(cache, now);
+  const mistakebook = createMistakebook(cache, now);
   const summaryCache = createLruCache<{ signature: string; summary: ArticleSummary }>(cache, {
     prefix: 'sum:',
     indexKey: 'sumIndex',
@@ -168,6 +172,15 @@ export function createHandlers({
     }
   }
 
+  async function recordMistakes({ corrections, source }: RecordMistakesRequest): Promise<RecordMistakesResponse> {
+    try {
+      if (corrections.length) await mistakebook.record(corrections, source);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   async function recordLookup({ entry, context, count }: RecordLookupRequest): Promise<RecordLookupResponse> {
     try {
       await wordbook.record(entry, context, { count });
@@ -207,6 +220,8 @@ export function createHandlers({
           return recordLookup(message);
         case 'summarize':
           return summarize(message.article);
+        case 'record-mistakes':
+          return recordMistakes(message);
         default:
           return undefined;
       }

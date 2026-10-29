@@ -1,5 +1,5 @@
 import { createGeminiClient } from '../lib/gemini.ts';
-import { articleKey, type ActivateMessage } from '../lib/messages.ts';
+import { articleKey, type ActivateMessage, type RecordMistakesRequest } from '../lib/messages.ts';
 import { createSettings, DEFAULT_SETTINGS, type Settings } from '../lib/settings.ts';
 import { createRecorder } from '../lib/recorder.ts';
 import { createTts } from '../lib/speech.ts';
@@ -40,6 +40,15 @@ const controller = createController({
   view,
   getRate: () => rate,
   autoStart: () => Boolean(latestSettings.apiKey),
+  onLearnerTurn: (turn, article) => {
+    if (!turn.corrections.length) return;
+    const request: RecordMistakesRequest = {
+      type: 'record-mistakes',
+      corrections: turn.corrections,
+      source: { utterance: turn.transcript, url: article.url, title: article.title },
+    };
+    chrome.runtime.sendMessage(request).catch(() => {});
+  },
 });
 replay = (text) => void controller.replay(text);
 
@@ -80,6 +89,7 @@ $('#send-form').addEventListener('submit', (event) => {
 });
 $('#open-options').addEventListener('click', () => chrome.runtime.openOptionsPage());
 $('#open-wordbook').addEventListener('click', () => void chrome.tabs.create({ url: chrome.runtime.getURL('wordbook.html') }));
+$('#open-mistakes').addEventListener('click', () => void chrome.tabs.create({ url: chrome.runtime.getURL('wordbook.html#mistakes') }));
 
 const inThisWindow = async (windowId: number) => windowId === (await windowIdPromise);
 

@@ -50,17 +50,32 @@ export interface ControllerDeps {
   getRate: () => number;
   /** Whether the tutor should open a new conversation by itself (e.g. only when an API key is set). */
   autoStart?: () => boolean;
+  /**
+   * After each answered learner turn (typed or spoken), e.g. to collect corrections in the mistakes
+   * book and count progress. Called even if the learner has switched to another article meanwhile.
+   */
+  onLearnerTurn?: (turn: TutorTurn, article: ArticleData, spoken: boolean) => void;
 }
 
 interface ActiveConversation {
   url: string;
+  article: ArticleData;
   session: TutorSessionLike;
   items: DisplayItem[];
 }
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function createController({ createSession, store, recorder, tts, view, getRate, autoStart = () => false }: ControllerDeps) {
+export function createController({
+  createSession,
+  store,
+  recorder,
+  tts,
+  view,
+  getRate,
+  autoStart = () => false,
+  onLearnerTurn,
+}: ControllerDeps) {
   let active: ActiveConversation | undefined;
   let phase: Phase = 'no-article';
   let loadId = 0; // guards against overlapping setArticle() calls while a saved conversation loads
@@ -81,7 +96,7 @@ export function createController({ createSession, store, recorder, tts, view, ge
    * If the user switched to another article meanwhile, the turn is still saved to its own
    * conversation but not drawn.
    */
-  async function converse(call: (s: TutorSessionLike) => Promise<TutorTurn>) {
+  async function converse(call: (s: TutorSessionLike) => Promise<TutorTurn>, learner?: { spoken: boolean }) {
     const conversation = active;
     if (!conversation) return;
     setPhase('thinking');
@@ -91,6 +106,7 @@ export function createController({ createSession, store, recorder, tts, view, ge
       if (turn.transcript) items.push({ kind: 'user', text: turn.transcript });
       items.push({ kind: 'tutor', turn });
       conversation.items.push(...items);
+      if (learner) onLearnerTurn?.(turn, conversation.article, learner.spoken);
       store
         .save(conversation.url, { history: conversation.session.history, items: conversation.items })
         .catch(() => {}); // losing the saved copy must not break the live conversation
@@ -120,7 +136,7 @@ export function createController({ createSession, store, recorder, tts, view, ge
       setPhase('thinking'); // disables input while the saved conversation loads
       const saved = await store.load(article.url).catch(() => null);
       if (id !== loadId) return; // another article was selected in the meantime
-      active = { url: article.url, session: createSession(article, saved?.history ?? []), items: saved?.items ?? [] };
+      active = { url: article.url, article, session: createSession(article, saved?.history ?? []), items: saved?.items ?? [] };
       active.items.forEach(show);
       setPhase('ready');
       // A fresh conversation starts with the tutor's first guiding question, not with the learner.
@@ -131,7 +147,7 @@ export function createController({ createSession, store, recorder, tts, view, ge
 
     async submitText(text: string) {
       const trimmed = text.trim();
-      if (trimmed && phase !== 'thinking') await converse((s) => s.send(trimmed));
+      if (trimmed && phase !== 'thinking') await converse((s) => s.send(trimmed), { spoken: false });
     },
 
     toggleMic() {
@@ -141,7 +157,7 @@ export function createController({ createSession, store, recorder, tts, view, ge
       setPhase('listening');
       recorder.start({
         onClip: (clip) => {
-          if (clip) return void converse((s) => s.sendAudio(clip));
+          if (clip) return void converse((s) => s.sendAudio(clip), { spoken: true });
           view.showError('No speech detected. Try again.');
           setPhase('ready');
         },

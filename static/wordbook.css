@@ -24,3 +24,9 @@
 .word-actions .muted { margin-left: auto; }
 .empty { color: var(--muted); text-align: center; padding: 40px 0; }
 @media (prefers-color-scheme: dark) { .context a, .dict { color: #a5b4fc; } }
+.views { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+.views button { background: transparent; color: var(--muted); border-radius: 8px 8px 0 0; padding: 8px 14px; border-bottom: 2px solid transparent; }
+.views button.active { color: inherit; border-bottom-color: var(--accent); font-weight: 600; }
+.fix { margin: 0; font-size: 16px; }
+.fix del { color: #dc2626; }
+.fix ins { color: #16a34a; text-decoration: none; font-weight: 600; }
