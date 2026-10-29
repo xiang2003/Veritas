@@ -1,5 +1,11 @@
 import { createGeminiClient } from '../lib/gemini.ts';
-import { articleKey, type ActivateMessage, type RecordMistakesRequest, type RecordPracticeRequest } from '../lib/messages.ts';
+import {
+  articleKey,
+  type ActivateMessage,
+  type RecordMistakesRequest,
+  type RecordPracticeRequest,
+  type TrackProgressRequest,
+} from '../lib/messages.ts';
 import { createSettings, DEFAULT_SETTINGS, type Settings } from '../lib/settings.ts';
 import { createRecorder } from '../lib/recorder.ts';
 import { createTts } from '../lib/speech.ts';
@@ -7,6 +13,8 @@ import { createTutorSession } from '../lib/tutor.ts';
 import type { ArticleData } from '../lib/types.ts';
 import { createConversationStore } from '../lib/conversations.ts';
 import { pickPracticeWords, type PracticeWord } from '../lib/practice.ts';
+import { createProgress, PROGRESS_STORAGE_KEY, summarizeProgress } from '../lib/progress.ts';
+import { reviewSession } from '../lib/review.ts';
 import { createWordbook } from '../lib/wordbook.ts';
 import { createController, type SavedConversation } from './controller.ts';
 import { createView } from './view.ts';
@@ -20,6 +28,19 @@ let latestSettings: Settings = DEFAULT_SETTINGS;
 /** Recently looked-up words the tutor should get the learner to use (refreshed per article). */
 let practiceWords: PracticeWord[] = [];
 const wordbook = createWordbook(chrome.storage.local); // read-only here; the background writes it
+const progress = createProgress(chrome.storage.local); // read-only here as well
+const track = (delta: TrackProgressRequest['delta']) => {
+  const request: TrackProgressRequest = { type: 'track-progress', delta };
+  return chrome.runtime.sendMessage(request).catch(() => {});
+};
+
+async function progressSummary() {
+  return summarizeProgress(await progress.read(), latestSettings.dailyGoal, Date.now());
+}
+
+async function renderProgress(): Promise<void> {
+  view.setProgress(await progressSummary());
+}
 let currentUrl: string | undefined;
 let rate = 1;
 let replay: (text: string) => void = () => {};
@@ -29,6 +50,7 @@ const view = createView(
   {
     title: $('#title'), status: $('#status'), log: $('#log'), error: $('#error'),
     startButton: $('#start'), micButton: $('#mic'), sendButton: $('#send'), input: $('#text'),
+    finishButton: $('#finish'), progress: $('#progress'),
   },
   (text) => replay(text),
 );
@@ -45,7 +67,14 @@ const controller = createController({
   view,
   getRate: () => rate,
   autoStart: () => Boolean(latestSettings.apiKey),
-  onLearnerTurn: (turn, article) => {
+  review: async (turns, article) => {
+    const review = await reviewSession(client, article.title, turns, latestSettings);
+    await track({ reviews: 1 });
+    const { today, goal, streak } = await progressSummary();
+    return { ...review, progress: { answers: today.answers, goal, streak } };
+  },
+  onLearnerTurn: (turn, article, spoken) => {
+    void track({ answers: 1, spokenAnswers: spoken ? 1 : 0 });
     const usedKeys = practiceWords.filter((w) => turn.usedWords.includes(w.word)).map((w) => w.key);
     if (usedKeys.length) {
       const practice: RecordPracticeRequest = { type: 'record-practice', keys: usedKeys };
@@ -82,6 +111,7 @@ async function loadActiveArticle(): Promise<ArticleData | null> {
 async function refresh(): Promise<void> {
   latestSettings = await settings.get();
   rate = latestSettings.speechRate;
+  void renderProgress();
   const article = await loadActiveArticle();
   if (article?.url === currentUrl) return; // same article: keep the conversation going
   currentUrl = article?.url;
@@ -94,6 +124,7 @@ async function refresh(): Promise<void> {
 
 $('#start').addEventListener('click', () => void controller.start());
 $('#mic').addEventListener('click', () => controller.toggleMic());
+$('#finish').addEventListener('click', () => void controller.finish());
 $('#send-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const input = $<HTMLInputElement>('#text');
@@ -114,3 +145,11 @@ chrome.tabs.onUpdated.addListener(async (_id, change, tab) => {
 });
 chrome.storage.session.onChanged.addListener(() => void refresh());
 void refresh();
+chrome.storage.local.onChanged.addListener((changes) => {
+  if (PROGRESS_STORAGE_KEY in changes || 'dailyGoal' in changes) void refreshProgress();
+});
+
+async function refreshProgress(): Promise<void> {
+  latestSettings = await settings.get();
+  await renderProgress();
+}

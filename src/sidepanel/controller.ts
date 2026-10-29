@@ -1,5 +1,6 @@
 import type { AudioClip, ChatMessage } from '../lib/gemini.ts';
 import type { RecorderLike } from '../lib/recorder.ts';
+import type { SessionReview } from '../lib/review.ts';
 import type { TutorTurn } from '../lib/tutor.ts';
 import type { ArticleData } from '../lib/types.ts';
 
@@ -25,11 +26,15 @@ export interface View {
   clearConversation(): void;
   addUserMessage(text: string): void;
   addTutorTurn(turn: TutorTurn): void;
+  addReview(review: SessionReview): void;
   showError(message: string): void;
 }
 
 /** One line of the visible conversation, kept so it can be redrawn when the user returns to an article. */
-export type DisplayItem = { kind: 'user'; text: string } | { kind: 'tutor'; turn: TutorTurn };
+export type DisplayItem =
+  | { kind: 'user'; text: string }
+  | { kind: 'tutor'; turn: TutorTurn }
+  | { kind: 'review'; review: SessionReview };
 
 export interface SavedConversation {
   history: ChatMessage[];
@@ -55,6 +60,8 @@ export interface ControllerDeps {
    * book and count progress. Called even if the learner has switched to another article meanwhile.
    */
   onLearnerTurn?: (turn: TutorTurn, article: ArticleData, spoken: boolean) => void;
+  /** End-of-conversation review of the learner's answers so far. */
+  review?: (turns: TutorTurn[], article: ArticleData) => Promise<SessionReview>;
 }
 
 interface ActiveConversation {
@@ -75,6 +82,7 @@ export function createController({
   getRate,
   autoStart = () => false,
   onLearnerTurn,
+  review,
 }: ControllerDeps) {
   let active: ActiveConversation | undefined;
   let phase: Phase = 'no-article';
@@ -87,7 +95,14 @@ export function createController({
 
   function show(item: DisplayItem) {
     if (item.kind === 'user') view.addUserMessage(item.text);
-    else view.addTutorTurn(item.turn);
+    else if (item.kind === 'tutor') view.addTutorTurn(item.turn);
+    else view.addReview(item.review);
+  }
+
+  function persist(conversation: ActiveConversation) {
+    store
+      .save(conversation.url, { history: conversation.session.history, items: conversation.items })
+      .catch(() => {}); // losing the saved copy must not break the live conversation
   }
 
   /**
@@ -107,9 +122,7 @@ export function createController({
       items.push({ kind: 'tutor', turn });
       conversation.items.push(...items);
       if (learner) onLearnerTurn?.(turn, conversation.article, learner.spoken);
-      store
-        .save(conversation.url, { history: conversation.session.history, items: conversation.items })
-        .catch(() => {}); // losing the saved copy must not break the live conversation
+      persist(conversation);
       if (active !== conversation) return;
       items.forEach(show);
       setPhase('speaking');
@@ -166,6 +179,25 @@ export function createController({
           setPhase('ready');
         },
       });
+    },
+
+    /** End the conversation with a review card (kept in the conversation like any other message). */
+    async finish() {
+      const conversation = active;
+      if (!conversation || !review || phase === 'thinking') return;
+      recorder.stop();
+      tts.stop();
+      setPhase('thinking');
+      try {
+        const turns = conversation.items.flatMap((i) => (i.kind === 'tutor' ? [i.turn] : []));
+        const item: DisplayItem = { kind: 'review', review: await review(turns, conversation.article) };
+        conversation.items.push(item);
+        persist(conversation);
+        if (active === conversation) show(item);
+      } catch (error) {
+        if (active === conversation) view.showError(messageOf(error));
+      }
+      if (active === conversation) setPhase('ready');
     },
 
     replay: (text: string) => tts.speak(text, getRate()),

@@ -1,3 +1,5 @@
+import type { ProgressSummary } from '../lib/progress.ts';
+import type { SessionReview } from '../lib/review.ts';
 import type { TutorTurn } from '../lib/tutor.ts';
 import type { Phase, View } from './controller.ts';
 
@@ -26,11 +28,23 @@ export interface ViewParts {
   startButton: HTMLButtonElement;
   micButton: HTMLButtonElement;
   sendButton: HTMLButtonElement;
+  finishButton: HTMLButtonElement;
   input: HTMLInputElement;
+  progress: HTMLElement;
+}
+
+/** e.g. "今日 6/10 回答 · 🔥 連續 3 天" */
+export function progressLabel({ answers, goal, streak }: { answers: number; goal: number; streak: number }): string {
+  const day = answers >= goal ? `✅ 今日目標達成 ${answers}/${goal}` : `今日 ${answers}/${goal} 回答`;
+  return streak ? `${day} · 🔥 連續 ${streak} 天` : day;
 }
 
 /** DOM implementation of the controller's View. Model text is only ever set via textContent. */
-export function createView(doc: Document, parts: ViewParts, onReplay: (text: string) => void): View {
+export function createView(
+  doc: Document,
+  parts: ViewParts,
+  onReplay: (text: string) => void,
+): View & { setProgress(summary: ProgressSummary): void } {
   const speakButton = (text: string) => {
     const b = el(doc, 'button', 'icon', '🔊');
     b.type = 'button';
@@ -64,7 +78,39 @@ export function createView(doc: Document, parts: ViewParts, onReplay: (text: str
     return card;
   }
 
+  function reviewCard(r: SessionReview): HTMLElement {
+    const card = el(doc, 'section', 'review');
+    card.append(el(doc, 'h3', '', '🏁 本次練習總結'));
+    const s = r.stats;
+    const facts = [`回答 ${s.answers} 次${s.spoken ? `（口說 ${s.spoken}）` : ''}`, `糾正 ${s.corrections} 處`];
+    if (r.level) facts.push(`口說程度約 ${r.level}`);
+    card.append(el(doc, 'p', 'facts', facts.join(' · ')));
+    if (s.usedWords.length) card.append(el(doc, 'p', 'used-words', `✓ 用上了生字：${s.usedWords.join('、')}`));
+    if (r.overall) card.append(el(doc, 'p', '', r.overall));
+    const list = (title: string, items: string[]) => {
+      if (!items.length) return;
+      card.append(el(doc, 'p', 'label', title));
+      const ul = el(doc, 'ul');
+      for (const item of items) ul.append(el(doc, 'li', '', item));
+      card.append(ul);
+    };
+    list('👍 做得好', r.strengths);
+    list('🎯 下次加強', r.focus);
+    if (r.nextTime) card.append(el(doc, 'p', 'next', `➡️ 下次試試：${r.nextTime}`));
+    if (r.progress) card.append(el(doc, 'p', 'goal', progressLabel(r.progress)));
+    return card;
+  }
+
   return {
+    setProgress(summary) {
+      parts.progress.textContent = progressLabel({ answers: summary.today.answers, goal: summary.goal, streak: summary.streak });
+      parts.progress.classList.toggle('met', summary.goalMet);
+    },
+    addReview(review) {
+      parts.startButton.hidden = true;
+      parts.log.append(reviewCard(review));
+      scrollDown();
+    },
     setPhase(phase) {
       parts.status.textContent = PHASE_LABEL[phase];
       // Show how long the AI has been working, so a slow answer does not look like a frozen panel.
@@ -81,6 +127,7 @@ export function createView(doc: Document, parts: ViewParts, onReplay: (text: str
       parts.micButton.classList.toggle('active', phase === 'listening');
       parts.micButton.textContent = phase === 'listening' ? '⏹ Stop' : '🎤 Speak';
       parts.sendButton.disabled = busy;
+      parts.finishButton.disabled = busy;
       parts.input.disabled = busy;
     },
     setArticleTitle: (title) => (parts.title.textContent = title),

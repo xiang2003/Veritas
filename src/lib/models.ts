@@ -1,5 +1,13 @@
 /** What a Gemini request is for; each task is routed to the model that suits it. */
-export type Task = 'vocabulary' | 'tutor' | 'transcribe' | 'translate' | 'define' | 'recommend' | 'summarize';
+export type Task =
+  | 'vocabulary'
+  | 'tutor'
+  | 'transcribe'
+  | 'translate'
+  | 'define'
+  | 'recommend'
+  | 'summarize'
+  | 'review';
 
 /**
  * A model, as one ID or as candidate IDs for the same model (e.g. stable and preview names). The
@@ -22,7 +30,8 @@ export const LITE_3_1: ModelChoice = ['gemini-3.1-flash-lite', 'gemini-3.1-flash
  * - tutor → 3.8: its corrections and better answers matter most;
  * - vocabulary → 3.6: one long answer per article, kept off the tutor's quota;
  * - transcription → 3 Flash: a spoken turn (transcription + tutor) uses two different quotas;
- * - simple, frequent tasks → the two 500/day Lite models.
+ * - simple, frequent tasks → the two 500/day Lite models;
+ * - end-of-session review → 2.5 Flash, otherwise only a fallback, so it costs no main task quota.
  */
 export const TASK_MODELS: Readonly<Record<Task, readonly ModelChoice[]>> = {
   tutor: [FLASH_3_8, FLASH_3_6, FLASH_3, FLASH_2_5],
@@ -32,6 +41,7 @@ export const TASK_MODELS: Readonly<Record<Task, readonly ModelChoice[]>> = {
   define: [LITE_3_5, LITE_3_1, FLASH_2_5],
   recommend: [LITE_3_5, LITE_3_1, FLASH_2_5],
   summarize: [LITE_3_5, LITE_3_1, FLASH_2_5],
+  review: [FLASH_2_5, FLASH_3, LITE_3_5, LITE_3_1],
 };
 
 /**
@@ -43,6 +53,7 @@ export const TASK_TIMEOUT_MS: Readonly<Record<Task, number>> = {
   tutor: 60_000,
   transcribe: 60_000,
   summarize: 60_000,
+  review: 60_000,
   translate: 45_000,
   define: 45_000,
   recommend: 45_000,

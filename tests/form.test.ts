@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS } from '../src/lib/settings.ts';
 // form.ts uses HTMLInputElement for instanceof checks, so expose jsdom's globals first.
 const { window } = new JSDOM(`<form id="f">
   <input name="apiKey"><select name="level"><option>B2</option><option>C1</option></select>
-  <input name="nativeLanguage"><input name="interests"><input name="speechRate"><input name="autoHighlight" type="checkbox"><input name="autoRecommend" type="checkbox"><input name="autoOpen" type="checkbox">
+  <input name="nativeLanguage"><input name="interests"><input name="speechRate"><input name="autoHighlight" type="checkbox"><input name="autoRecommend" type="checkbox"><input name="autoOpen" type="checkbox"><input name="dailyGoal">
 </form>`);
 Object.assign(globalThis, { HTMLInputElement: window.HTMLInputElement });
 const { fillForm, readForm } = await import('../src/options/form.ts');
@@ -39,4 +39,14 @@ test('readForm leaves blank optional fields undefined so defaults survive', () =
   const patch = readForm(form);
   assert.equal(patch.nativeLanguage, undefined);
   assert.equal(patch.speechRate, undefined);
+});
+
+test('readForm rounds and bounds the daily goal; nonsense keeps the stored value', () => {
+  const el = (n: string) => form.elements.namedItem(n) as HTMLInputElement;
+  el('dailyGoal').value = '7.6';
+  assert.equal(readForm(form).dailyGoal, 8);
+  el('dailyGoal').value = '500';
+  assert.equal(readForm(form).dailyGoal, 100);
+  el('dailyGoal').value = '0';
+  assert.equal(readForm(form).dailyGoal, undefined);
 });

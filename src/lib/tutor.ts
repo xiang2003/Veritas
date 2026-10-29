@@ -26,6 +26,8 @@ export interface TutorTurn {
   hints: string[];
   /** Practice words the learner used in this answer (filled in by the session). */
   usedWords: string[];
+  /** The answer was spoken (transcribed) rather than typed. */
+  spoken?: boolean;
 }
 
 export interface TutorOptions {
@@ -130,7 +132,7 @@ export function createTutorSession(
       const { transcript, pronunciation } = await transcribeSpeech(client, audio, options);
       if (!transcript) throw new Error('沒有聽清楚你說的話，請再說一次。');
       const turn = await say(SPOKEN_PREFIX + transcript);
-      return { ...turn, transcript, pronunciation, usedWords: used(transcript) };
+      return { ...turn, transcript, pronunciation, usedWords: used(transcript), spoken: true };
     },
     get length() {
       return history.length;

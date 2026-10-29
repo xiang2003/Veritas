@@ -9,6 +9,8 @@ export interface Settings {
   autoRecommend: boolean;
   /** Turn Veritas on by itself on news articles, with a 💬 AI 教練 button that opens the tutor. */
   autoOpen: boolean;
+  /** Tutor answers per day that count as reaching the daily goal (and keep the streak going). */
+  dailyGoal: number;
   speechRate: number;
 }
 
@@ -20,6 +22,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   autoHighlight: true,
   autoRecommend: true,
   autoOpen: true,
+  dailyGoal: 10,
   speechRate: 0.95,
 });
 

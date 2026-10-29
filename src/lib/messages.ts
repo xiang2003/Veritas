@@ -1,6 +1,7 @@
 import type { Pronunciation } from './dictionary.ts';
 import type { Headline, Recommendation } from './recommend.ts';
 import type { MistakeSource } from './mistakes.ts';
+import type { DayStats } from './progress.ts';
 import type { ArticleSummary } from './summary.ts';
 import type { Correction } from './tutor.ts';
 import type { ArticleData, VocabEntry } from './types.ts';
@@ -90,6 +91,14 @@ export interface RecordPracticeRequest {
 
 export type RecordPracticeResponse = { ok: true } | { ok: false; error: string };
 
+/** Side panel -> background: add to today's learning statistics. */
+export interface TrackProgressRequest {
+  type: 'track-progress';
+  delta: Partial<DayStats>;
+}
+
+export type TrackProgressResponse = { ok: true } | { ok: false; error: string };
+
 export type Request =
   | AnalyzeRequest
   | TranslateRequest
@@ -99,7 +108,8 @@ export type Request =
   | RecordLookupRequest
   | SummarizeRequest
   | RecordMistakesRequest
-  | RecordPracticeRequest;
+  | RecordPracticeRequest
+  | TrackProgressRequest;
 export type Response =
   | AnalyzeResponse
   | TranslateResponse
@@ -109,7 +119,8 @@ export type Response =
   | RecordLookupResponse
   | SummarizeResponse
   | RecordMistakesResponse
-  | RecordPracticeResponse;
+  | RecordPracticeResponse
+  | TrackProgressResponse;
 
 /** Content script -> background, during a user gesture: open the tutor side panel. */
 export interface OpenPanelMessage {

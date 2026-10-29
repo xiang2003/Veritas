@@ -27,3 +27,17 @@ footer input { flex: 1; }
 .hints-label { width: 100%; color: var(--muted); font-size: 12px; }
 button.hint { padding: 4px 10px; border-radius: 999px; background: transparent; color: inherit; border: 1px dashed var(--accent); font-size: 13px; text-align: left; }
 button.hint:hover { background: var(--surface); }
+.progress { padding: 6px 14px 0; font-size: 12px; font-weight: 600; color: var(--accent); }
+.progress:empty { display: none; }
+.progress.met { color: #16a34a; }
+.footer-actions { display: flex; gap: 8px; }
+.footer-actions #mic { flex: 1; }
+.review { border: 1px solid var(--border); border-top: 4px solid #16a34a; border-radius: 10px; padding: 10px 14px; font-size: 13px; }
+.review h3 { margin: 0 0 6px; font-size: 15px; }
+.review p { margin: 4px 0; }
+.review ul { margin: 2px 0 6px; padding-left: 20px; }
+.review .facts, .review .label { color: var(--muted); }
+.review .label { margin-top: 8px; font-weight: 600; }
+.review .used-words { color: #16a34a; font-weight: 600; }
+.review .next { font-weight: 600; }
+.review .goal { margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--border); color: var(--accent); font-weight: 600; }

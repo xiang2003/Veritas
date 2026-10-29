@@ -10,6 +10,7 @@ import {
 import type { RecorderHandlers, RecorderLike } from '../src/lib/recorder.ts';
 import type { ChatMessage } from '../src/lib/gemini.ts';
 import type { TutorTurn } from '../src/lib/tutor.ts';
+import type { SessionReview } from '../src/lib/review.ts';
 
 const article = { url: 'u', title: 'Title', text: 'text' };
 const other = { url: 'v', title: 'Other', text: 'text' };
@@ -29,6 +30,7 @@ function setup(overrides: { sendAudio?: () => Promise<TutorTurn>; send?: (t: str
     addUserMessage: (t) => log.push(`user:${t}`),
     addTutorTurn: (t) => log.push(`tutor:${t.reply}`),
     showError: (m) => log.push(`error:${m}`),
+    addReview: (r) => log.push(`review:${r.overall}`),
   };
   let handlers!: RecorderHandlers;
   const recorder: RecorderLike = {
@@ -198,7 +200,7 @@ test('a failing store does not break the conversation', async () => {
     store: { load: async () => { throw new Error('nope'); }, save: async () => { throw new Error('nope'); } },
     recorder: { start() {}, stop() {} },
     tts: { speak: async () => {}, stop() {} },
-    view: { setPhase() {}, setArticleTitle() {}, clearConversation() {}, addUserMessage() {}, addTutorTurn: (t) => s.log.push(`tutor:${t.reply}`), showError: (m) => s.log.push(`error:${m}`) },
+    view: { setPhase() {}, setArticleTitle() {}, clearConversation() {}, addUserMessage() {}, addTutorTurn: (t) => s.log.push(`tutor:${t.reply}`), addReview() {}, showError: (m) => s.log.push(`error:${m}`) },
     getRate: () => 1,
   });
   await controller.setArticle(article);
@@ -219,7 +221,7 @@ test('a new article opens with the tutor question when autoStart is on; saved on
     store: { load: async (url) => saved.get(url) ?? null, save: async (url, c) => void saved.set(url, c) },
     recorder: { start() {}, stop() {} },
     tts: { speak: async () => {}, stop() {} },
-    view: { setPhase() {}, setArticleTitle() {}, clearConversation() {}, addUserMessage() {}, addTutorTurn() {}, showError() {} },
+    view: { setPhase() {}, setArticleTitle() {}, clearConversation() {}, addUserMessage() {}, addTutorTurn() {}, addReview() {}, showError() {} },
     getRate: () => 1,
     autoStart: () => true,
   });
@@ -248,7 +250,7 @@ test('every answered learner turn is reported with its article and whether it wa
     store: { load: async () => null, save: async () => {} },
     recorder: { start: (h) => h.onClip({ mimeType: 'audio/webm', data: 'A' }), stop() {} },
     tts: { speak: async () => {}, stop() {} },
-    view: { setPhase() {}, setArticleTitle() {}, clearConversation() {}, addUserMessage() {}, addTutorTurn() {}, showError() {} },
+    view: { setPhase() {}, setArticleTitle() {}, clearConversation() {}, addUserMessage() {}, addTutorTurn() {}, addReview() {}, showError() {} },
     getRate: () => 1,
     onLearnerTurn: (t, a, spoken) => void reports.push(`${t.transcript}|${a.title}|${spoken}`),
   });
@@ -258,4 +260,64 @@ test('every answered learner turn is reported with its article and whether it wa
   controller.toggleMic();
   await tick();
   assert.deepEqual(reports, ['typed answer|Title|false', 'spoken words|Title|true']);
+});
+
+function reviewSetup(reviewImpl: (turns: TutorTurn[]) => Promise<SessionReview>) {
+  const log: string[] = [];
+  const phases: Phase[] = [];
+  const saved = new Map<string, SavedConversation>();
+  const controller = createController({
+    createSession: () => ({
+      history: [],
+      start: async () => turn('Q1'),
+      send: async (t) => turn('ok', t),
+      sendAudio: async () => turn('x'),
+    }),
+    store: { load: async (url) => saved.get(url) ?? null, save: async (url, c) => void saved.set(url, structuredClone(c)) },
+    recorder: { start() {}, stop() {} },
+    tts: { speak: async () => {}, stop() {} },
+    view: {
+      setPhase: (p) => void phases.push(p),
+      setArticleTitle() {},
+      clearConversation: () => void log.push('clear'),
+      addUserMessage: (t) => void log.push(`user:${t}`),
+      addTutorTurn: (t) => void log.push(`tutor:${t.reply}`),
+      addReview: (r) => void log.push(`review:${r.overall}`),
+      showError: (m) => void log.push(`error:${m}`),
+    },
+    getRate: () => 1,
+    review: (turns) => reviewImpl(turns),
+  });
+  return { controller, log, phases, saved };
+}
+
+const sampleReview = (overall: string): SessionReview => ({
+  overall, strengths: [], focus: [], nextTime: '', level: '', stats: { answers: 1, spoken: 0, corrections: 0, usedWords: [] },
+});
+
+test('finish reviews the conversation turns, shows the card and keeps it with the conversation', async () => {
+  let seen: TutorTurn[] = [];
+  const s = reviewSetup(async (turns) => ((seen = turns), sampleReview('good job')));
+  await s.controller.setArticle(article);
+  await s.controller.start();
+  await s.controller.submitText('my answer');
+  await s.controller.finish();
+  assert.deepEqual(seen.map((t) => t.transcript), ['', 'my answer']);
+  assert.ok(s.log.includes('review:good job'));
+  assert.equal(s.phases.at(-1), 'ready');
+
+  s.log.length = 0;
+  await s.controller.setArticle(other);
+  await s.controller.setArticle(article); // restored with the review card
+  assert.ok(s.log.includes('review:good job'));
+});
+
+test('a failed review shows the error and keeps the conversation going', async () => {
+  const s = reviewSetup(async () => {
+    throw new Error('先回答至少一題，才能產生總結。');
+  });
+  await s.controller.setArticle(article);
+  await s.controller.finish();
+  assert.ok(s.log.includes('error:先回答至少一題，才能產生總結。'));
+  assert.equal(s.phases.at(-1), 'ready');
 });

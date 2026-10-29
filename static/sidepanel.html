@@ -19,12 +19,16 @@
       <button type="button" id="open-options" class="secondary" title="Settings">⚙</button>
     </div>
   </header>
+  <div id="progress" class="progress"></div>
   <div id="status" class="status" role="status"></div>
   <div id="error" class="error" role="alert"></div>
   <div id="log" class="log"></div>
   <button type="button" id="start" class="start" hidden>Start discussing this article</button>
   <footer>
-    <button type="button" id="mic">🎤 Speak</button>
+    <div class="footer-actions">
+      <button type="button" id="mic">🎤 Speak</button>
+      <button type="button" id="finish" class="secondary" title="結束這次對話並產生總結">🏁 結束並總結</button>
+    </div>
     <form id="send-form">
       <input id="text" type="text" placeholder="…or type your answer" autocomplete="off" />
       <button type="submit" id="send">Send</button>

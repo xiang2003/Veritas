@@ -14,6 +14,7 @@ export function fillForm(form: HTMLFormElement, settings: Settings): void {
 export function readForm(form: HTMLFormElement): Partial<Settings> {
   const field = (name: string) => form.elements.namedItem(name) as HTMLInputElement;
   const rate = Number(field('speechRate').value);
+  const goal = Math.round(Number(field('dailyGoal').value));
   return {
     apiKey: field('apiKey').value.trim(),
     nativeLanguage: field('nativeLanguage').value.trim() || undefined,
@@ -22,6 +23,7 @@ export function readForm(form: HTMLFormElement): Partial<Settings> {
     autoHighlight: field('autoHighlight').checked,
     autoRecommend: field('autoRecommend').checked,
     autoOpen: field('autoOpen').checked,
+    dailyGoal: Number.isFinite(goal) && goal > 0 ? Math.min(100, goal) : undefined,
     speechRate: Number.isFinite(rate) ? Math.min(2, Math.max(0.5, rate)) : undefined,
   } as Partial<Settings>;
 }

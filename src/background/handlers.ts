@@ -10,6 +10,7 @@ import {
   type RecordMistakesRequest,
   type RecordMistakesResponse,
   type RecordPracticeResponse,
+  type TrackProgressResponse,
   type SummarizeResponse,
   type RecommendRequest,
   type RecommendResponse,
@@ -28,6 +29,7 @@ import type { ArticleData, VocabEntry } from '../lib/types.ts';
 import { analyzeVocabulary, defineTerm, termKey } from '../lib/vocab.ts';
 import { createWordbook } from '../lib/wordbook.ts';
 import { createMistakebook } from '../lib/mistakes.ts';
+import { createProgress, type DayStats } from '../lib/progress.ts';
 
 const MAX_CACHED_ARTICLES = 100;
 const MAX_CACHED_TRANSLATIONS = 500;
@@ -83,6 +85,7 @@ export function createHandlers({
   const picksCache = createLruCache<CachedPicks>(cache, { prefix: 'rec:', indexKey: 'recIndex', max: MAX_CACHED_PAGES });
   const wordbook = createWordbook(cache, now);
   const mistakebook = createMistakebook(cache, now);
+  const progress = createProgress(cache, now);
   const summaryCache = createLruCache<{ signature: string; summary: ArticleSummary }>(cache, {
     prefix: 'sum:',
     indexKey: 'sumIndex',
@@ -182,6 +185,15 @@ export function createHandlers({
     }
   }
 
+  async function trackProgress(delta: Partial<DayStats>): Promise<TrackProgressResponse> {
+    try {
+      await progress.track(delta);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   async function recordPractice(keys: string[]): Promise<RecordPracticeResponse> {
     try {
       await wordbook.markUsed(keys);
@@ -194,6 +206,7 @@ export function createHandlers({
   async function recordLookup({ entry, context, count }: RecordLookupRequest): Promise<RecordLookupResponse> {
     try {
       await wordbook.record(entry, context, { count });
+      if (count !== false) await progress.track({ lookups: 1 });
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -234,6 +247,8 @@ export function createHandlers({
           return recordMistakes(message);
         case 'record-practice':
           return recordPractice(message.keys);
+        case 'track-progress':
+          return trackProgress(message.delta);
         default:
           return undefined;
       }
